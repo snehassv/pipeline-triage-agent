@@ -224,3 +224,6 @@ airflow.db
 simple_auth_manager_passwords.json.generated
 data/*
 !data/.gitkeep
+
+# Agent: local settings and the per-diagnosis usage log
+agent/usage.jsonl

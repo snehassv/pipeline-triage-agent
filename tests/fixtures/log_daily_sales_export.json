@@ -1,0 +1,218 @@
+[
+ {
+  "event": "::group::Log message source details"
+ },
+ {
+  "event": "/opt/airflow/logs/dag_id=daily_sales_export/run_id=scheduled__2026-09-20T05:00:00+00:00/task_id=load_to_warehouse/attempt=1.log"
+ },
+ {
+  "event": "::endgroup::"
+ },
+ {
+  "timestamp": "2026-09-21T01:23:16.480241Z",
+  "event": "::group::Pre Execute",
+  "level": "info",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 2412
+ },
+ {
+  "timestamp": "2026-09-21T01:23:16.505090Z",
+  "event": "DAG bundles loaded: dags-folder",
+  "level": "info",
+  "map_index": -1,
+  "dag_id": "daily_sales_export",
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_warehouse",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "airflow.dag_processing.bundles.manager.DagBundlesManager",
+  "filename": "manager.py",
+  "lineno": 304
+ },
+ {
+  "timestamp": "2026-09-21T01:23:16.506554Z",
+  "event": "Filling up the DagBag from /opt/airflow/dags/dag_factory.py",
+  "level": "info",
+  "map_index": -1,
+  "dag_id": "daily_sales_export",
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_warehouse",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "airflow.dag_processing.dagbag.BundleDagBag",
+  "filename": "dagbag.py",
+  "lineno": 460
+ },
+ {
+  "timestamp": "2026-09-21T01:23:16.696217Z",
+  "event": "Worker startup parse complete",
+  "level": "info",
+  "bundle_name": "dags-folder",
+  "bundle_version": null,
+  "dag_file": "dag_factory.py",
+  "dag_id": "daily_sales_export",
+  "bundle_prepare_ms": 2,
+  "dag_file_parse_ms": 190,
+  "map_index": -1,
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_warehouse",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 1073
+ },
+ {
+  "timestamp": "2026-09-21T01:23:16.717074Z",
+  "event": "::endgroup::",
+  "level": "info",
+  "map_index": -1,
+  "dag_id": "daily_sales_export",
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_warehouse",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 2232
+ },
+ {
+  "timestamp": "2026-09-21T01:23:16.749220Z",
+  "event": "Running statement: SELECT * FROM fct_sales, parameters: None",
+  "level": "info",
+  "map_index": -1,
+  "dag_id": "daily_sales_export",
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_***",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "airflow.task.hooks.airflow.providers.postgres.hooks.postgres.PostgresHook",
+  "filename": "sql.py",
+  "lineno": 896
+ },
+ {
+  "timestamp": "2026-09-21T01:23:17.181827Z",
+  "event": "Rows affected: 20000",
+  "level": "info",
+  "map_index": -1,
+  "dag_id": "daily_sales_export",
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_***",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "airflow.task.hooks.airflow.providers.postgres.hooks.postgres.PostgresHook",
+  "filename": "sql.py",
+  "lineno": 914
+ },
+ {
+  "timestamp": "2026-09-21T01:23:17.205198Z",
+  "event": "Task failed with exception",
+  "level": "error",
+  "map_index": -1,
+  "dag_id": "daily_sales_export",
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_***",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 1676,
+  "error_detail": [
+   {
+    "exc_type": "FileNotFoundError",
+    "exc_value": "[Errno 2] No such file or directory: '/opt/airflow/data/exports/missing_dir/sales.csv'",
+    "exc_notes": [],
+    "syntax_error": null,
+    "is_cause": false,
+    "frames": [
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 1579,
+      "name": "_run_task_and_map_outcome"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 197,
+      "name": "wrapper"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 2234,
+      "name": "_execute_task"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 197,
+      "name": "wrapper"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 2192,
+      "name": "_run_execute_callable"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/bases/operator.py",
+      "lineno": 462,
+      "name": "wrapper"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/providers/standard/operators/python.py",
+      "lineno": 231,
+      "name": "execute"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/providers/standard/operators/python.py",
+      "lineno": 254,
+      "name": "execute_callable"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/callback_runner.py",
+      "lineno": 97,
+      "name": "run"
+     },
+     {
+      "filename": "/opt/airflow/dags/dag_factory.py",
+      "lineno": 106,
+      "name": "run"
+     },
+     {
+      "filename": "/usr/python/lib/python3.13/pathlib/_local.py",
+      "lineno": 537,
+      "name": "open"
+     }
+    ],
+    "is_group": false,
+    "exceptions": []
+   }
+  ]
+ },
+ {
+  "timestamp": "2026-09-21T01:23:17.205956Z",
+  "event": "::group::Post Execute",
+  "level": "info",
+  "map_index": -1,
+  "dag_id": "daily_sales_export",
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_***",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 1677
+ },
+ {
+  "timestamp": "2026-09-21T01:23:17.212799Z",
+  "event": "::endgroup::",
+  "level": "info",
+  "map_index": -1,
+  "dag_id": "daily_sales_export",
+  "ti_id": "01a0c18f-68be-7295-b6f4-de39869647d8",
+  "task_id": "load_to_***",
+  "try_number": 1,
+  "run_id": "scheduled__2026-09-20T05:00:00+00:00",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 2379
+ }
+]

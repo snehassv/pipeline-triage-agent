@@ -57,7 +57,7 @@ Requires Docker and an Anthropic API key.
 git clone https://github.com/<you>/pipeline-triage-agent
 cd pipeline-triage-agent
 
-cp .env.example .env          # add ANTHROPIC_API_KEY
+cp .env.example .env          # Airflow settings (FERNET_KEY)
 docker compose up -d          # Airflow + Postgres warehouse
 
 python scripts/seed_warehouse.py     # deterministic fake data
@@ -72,19 +72,34 @@ python scripts/scenarios/add_column_to_orders_extract.py
 python scripts/scenarios/reset.py     # restore the clean seed
 ```
 
-Then start the agent and open the dashboard:
+Then configure and start the agent:
 
 ```bash
 pip install -r requirements.txt
+cp agent/.env.example agent/.env          # add ANTHROPIC_API_KEY (and GITHUB_REPO for PRs)
 uvicorn agent.main:app --port 8787        # dashboard: http://localhost:8787
-python -m agent.main                      # or print today's failures in the terminal
+```
+
+The agent reads `agent/.env`, not the root `.env`: docker compose passes the root
+file into every Airflow container, and the API key has no business there.
+
+```bash
+python -m agent.main                      # today's failures in the terminal
+python -m agent.main --usage              # tokens and cost of every diagnosis so far
+python -m pytest                          # tests (pip install -r requirements-dev.txt)
 ```
 
 The dashboard lists every failed task in the chosen date range with its real
 exception. Click a row for the task log, the diagnosis (engineer or analyst
-view), and the suggested diff. **Raise PR** asks for confirmation and is only
-enabled for High-confidence fixes when `GITHUB_REPO` is set. Without
+view), and the suggested fix. **Raise PR** asks for confirmation and is only
+enabled when the fix is High confidence, its patch applies cleanly, and
+`GITHUB_REPO` is set — the agent enforces the same rules server-side. Without
 `ANTHROPIC_API_KEY` you still get the failures and raw errors, just no diagnosis.
+
+Not every failure should be fixed in code. When the real problem is upstream
+data — duplicate keys in a feed, a file that never arrived, a data-quality check
+doing its job — the agent says what a person should do instead of proposing a
+patch that would hide it.
 
 Open the dashboard through the agent rather than from disk: the agent injects
 the API token when it serves the page, so the HTML file itself holds no secret.
@@ -114,19 +129,63 @@ DAGs are generated from config rather than hand-written — eight templates in
                                             │
                     ┌───────────────────────┼───────────────────┐
                     ▼                       ▼                   ▼
-              Airflow REST API        Postgres            Anthropic API
-              (task logs)             (warehouse)         (diagnosis + fix)
-                                            │
-                                            ▼
-                                       git / gh
-                                    (branch + PR)
+              Airflow REST API        Anthropic API          git / gh
+              (failed tasks, logs,    (diagnosis + patch)    (git apply --check,
+               DAG source)                                    branch + PR)
 ```
+
+Per failure, the agent (`agent/main.py`):
+
+1. lists failed task instances from Airflow's REST API (`agent/airflow.py`)
+2. reduces the task log to the exception, the DAG-code frames, and the lines just
+   before the failure
+3. collects the DAG's source file and `dags/config/pipelines.yaml`
+4. asks Claude for a diagnosis (`agent/diagnosis.py`) — the reply is constrained
+   to a JSON schema, and the fix comes back as a git-format patch
+5. checks the patch with `git apply --check` against the current checkout
+
+A failed attempt never changes, so all of this is cached per attempt: the
+dashboard polls every 30 seconds, but Claude is only called once per new failure.
 
 The agent returns one object per failure. The two things worth noting in the
 shape: `cause` carries both registers as sibling fields, and `confidence` sits
 next to the suggested diff rather than being inferred after the fact.
 
-<!-- TODO: paste the trimmed JSON contract here once the shape is settled -->
+```jsonc
+// GET /failures?start=2026-09-21&end=2026-09-21  →  [ ... ]
+{
+  "id": "orders_refresh::load_to_warehouse",   // stable across polls: dag::task
+  "dag": "orders_refresh",
+  "task": "load_to_warehouse",
+  "run_id": "scheduled__2026-09-21T02:00:00+00:00",
+  "day": "2026-09-21", "time": "02:00:07",     // local time (AGENT_TZ)
+  "occurrences": 2,                            // failed runs of this task in the window
+  "error": "UndefinedColumn: column \"effective_ts\" of relation \"stg_orders\" does not exist",
+  "log": [ { "sev": "err", "t": "Task failed with exception" }, ... ],
+
+  "diagnosed": true,
+  "type": "Schema drift",
+  "cat": "schema",                             // schema|merge|dq|sensor|table|gcs|auth
+  "confidence": "High",                        // High|Medium|Low
+  "cause": {
+    "engineer": "The orders extract gained an effective_ts column ...",
+    "analyst":  "Today's orders file has a new column the staging table isn't set up for ..."
+  },
+  "impact": "stg_orders is stale; downstream order reports show yesterday's data.",
+  "fixSummary": "Add effective_ts to stg_orders before the load runs.",
+  "patch": "diff --git a/dags/dag_factory.py b/dags/dag_factory.py\n...",
+  "patchError": null,                          // git's message if the patch doesn't apply
+  "diff": [ { "t": "file|hunk|ctx|add|del", "s": "..." } ],   // the patch, for display
+  "prTitle": "fix: add effective_ts to stg_orders",
+  "prBranch": "agent/fix-orders-effective-ts",
+  "usage": { "model": "claude-sonnet-5", "input_tokens": 3412,
+             "output_tokens": 688, "cost_usd": 0.0137, "seconds": 9.4 }
+}
+```
+
+`POST /pull-requests` takes only `{"id": "..."}`. The patch, branch and title come
+from the agent's own diagnosis, so the endpoint can't be used to push arbitrary
+content.
 
 ---
 
@@ -137,8 +196,10 @@ posture you'd give any service with production write access:
 
 - **Token header required on every endpoint.** Without it, any local process —
   or a stray browser tab — could trigger real git operations.
-- **Repository, branch, and file path validated against an allow-list**, closing
-  off path traversal outside the intended checkout.
+- **PRs are built from the agent's own diagnosis, never from request content.**
+  The caller names a failure; the agent re-checks every gate (High confidence,
+  patch applies, valid branch name) and applies the patch with `git apply`, which
+  refuses paths outside the checkout.
 - **CORS locked to the app's own origin**, so the token can't be read by a page
   on another site.
 
@@ -151,8 +212,8 @@ same risk category. This is the second kind.
 
 - **Single-turn questions only.** You ask one question about a failure and get
   one answer; there's no conversation thread, so follow-ups lose context.
-- **No caching.** Every poll re-runs diagnosis for every open failure, which is
-  fine locally and wasteful at scale.
+- **In-memory cache.** Diagnoses are cached per failed attempt, but only for the
+  life of the process; a restart re-diagnoses whatever is still in the window.
 - **Local credentials.** The agent runs under developer CLI sessions rather than
   a dedicated service account. A production deployment belongs in a container
   with its own scoped credentials.
@@ -165,7 +226,8 @@ same risk category. This is the second kind.
 ## Roadmap
 
 - [ ] Conversational thread per failure
-- [ ] Diagnosis caching
+- [x] Diagnosis caching
+- [ ] Persist diagnoses across restarts
 - [ ] Containerized deployment with a scoped service account
 - [ ] Additional failure categories
 
