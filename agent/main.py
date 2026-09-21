@@ -25,6 +25,7 @@ Run it (from the repo root, with `docker compose up -d` already done):
 Configuration — environment variables, or agent/.env (see agent/.env.example):
     ANTHROPIC_API_KEY  turns on diagnosis
     AGENT_MODEL        Claude model, default claude-sonnet-5
+    AGENT_DIAGNOSIS_WORKERS  diagnoses run in parallel in the background, default 4
     GITHUB_REPO        owner/name the PR endpoint targets; PRs are disabled if unset
     AGENT_TOKEN        shared secret for the X-Agent-Token header; generated if unset
     AIRFLOW_URL / AIRFLOW_USERNAME / AIRFLOW_PASSWORD   default http://localhost:8080, airflow/airflow
@@ -46,6 +47,7 @@ import sys
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -92,6 +94,7 @@ PIPELINES_CONFIG = "dags/config/pipelines.yaml"
 USAGE_LOG        = AGENT_DIR / "usage.jsonl"
 MAX_RANGE_DAYS   = 7      # a wider window multiplies the per-poll diagnosis cost
 RETRY_DIAGNOSIS_AFTER = 300  # seconds before re-trying a diagnosis that errored
+DIAGNOSIS_WORKERS = int(os.environ.get("AGENT_DIAGNOSIS_WORKERS", "4"))  # parallel Claude calls
 
 # Without this token, any local process — or a stray browser tab — could call these
 # endpoints and trigger real git/gh actions under your identity.
@@ -187,20 +190,36 @@ def read_sources(dag_id: str) -> dict:
 # ----------------------------------------------------------------------------------
 # A failed task attempt is finished: its log won't change, so neither will its diagnosis.
 # Caching per (dag, task, run, try) means the dashboard's 30s poll only does real work —
-# including the Claude call — when a *new* failure appears. A diagnosis that errors is
-# retried after RETRY_DIAGNOSIS_AFTER, not on every poll, so a bad reply isn't re-billed
-# twice a minute. The lock stops two overlapping polls diagnosing the same failure.
+# including the Claude call — when a *new* failure appears.
+#
+# A diagnosis takes 10-25s, so it never runs inside a request: /failures returns at once
+# with `diagnosing: true`, and a small thread pool fills the cache in the background (the
+# dashboard polls quickly until nothing is pending). A diagnosis that errors is retried
+# after RETRY_DIAGNOSIS_AFTER rather than on every poll, so a bad reply isn't re-billed
+# twice a minute. Each entry is submitted at most once, so overlapping polls can't
+# diagnose the same failure twice.
 _cache: dict = {}
 _cache_lock = threading.Lock()
+_usage_lock = threading.Lock()
 _CACHE_MAX = 500
 _latest: dict = {}  # failure id -> record from the most recent /failures; used by PRs
+_executor = ThreadPoolExecutor(max_workers=DIAGNOSIS_WORKERS, thread_name_prefix="diagnose")
 
 
-def collect_failures(lo: dt.datetime, hi: dt.datetime) -> list:
+def collect_failures(lo: dt.datetime, hi: dt.datetime, wait_for_diagnosis: bool = False) -> list:
+    """Failure records for the window. Diagnoses still in flight come back as
+    `diagnosing: true` unless wait_for_diagnosis is set (the CLI uses that)."""
+    failed = read_failed_tasks(lo, hi)
     with _cache_lock:
-        records = [_enrich(f) for f in read_failed_tasks(lo, hi)]
+        records = [_enrich(f) for f in failed]
+    if wait_for_diagnosis:
+        pending = [e["pending"] for e in _cache.values() if e["pending"]]
+        wait(pending)
+        with _cache_lock:
+            records = [_enrich(f) for f in failed]
+    with _cache_lock:
         _latest.update({r["id"]: r for r in records})
-        return records
+    return records
 
 
 def _enrich(f: dict) -> dict:
@@ -211,32 +230,44 @@ def _enrich(f: dict) -> dict:
             _cache.clear()
         log, error = read_task_log(f)
         entry = _cache[key] = {"log": log, "error": error, "files": read_sources(f["dag"]),
-                               "diag": None, "failed": None}
+                               "diag": None, "failed": None, "pending": None}
     f = {**f, "log": entry["log"], "error": entry["error"]}
-
-    diag = entry["diag"] or _diagnose_once(f, entry)
     # Identify a failure by what it *is*, not its position in the list — the UI
     # polls, and a positional id would make an open panel jump to another DAG.
-    return {"id": f"{f['dag']}::{f['task']}", **f, **diag}
+    return {"id": f"{f['dag']}::{f['task']}", **f, **_diagnosis_state(f, entry)}
 
 
-def _diagnose_once(f: dict, entry: dict) -> dict:
+def _diagnosis_state(f: dict, entry: dict) -> dict:
+    if entry["diag"]:
+        return entry["diag"]
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return _undiagnosed(f, "Automatic diagnosis is off — set ANTHROPIC_API_KEY in agent/.env to enable it.")
     failed = entry["failed"]
     if failed and time.monotonic() - failed[1] < RETRY_DIAGNOSIS_AFTER:
         return _undiagnosed(f, failed[0])
+    if entry["pending"] is None or entry["pending"].done():
+        entry["failed"] = None
+        entry["pending"] = _executor.submit(_diagnose_in_background, f, entry)
+    if entry["diag"]:  # an executor that runs inline (tests) has already finished
+        return entry["diag"]
+    if entry["failed"]:
+        return _undiagnosed(f, entry["failed"][0])
+    return {**_undiagnosed(f, f"Diagnosing with {diagnosis.MODEL}…"), "diagnosing": True}
+
+
+def _diagnose_in_background(f: dict, entry: dict) -> None:
     try:
         diag = diagnosis.diagnose(f, entry["files"])
+        diag["patchError"] = diagnosis.check_patch(diag["patch"], REPO_ROOT) if diag["patch"] else None
+        diag["diagnosed"] = True
+        diag["diagnosing"] = False
+        with _usage_lock:
+            diagnosis.record_usage(USAGE_LOG, f, diag)
+        entry["diag"] = diag
     except diagnosis.DiagnosisError as e:
         entry["failed"] = (f"Could not auto-diagnose: {e}", time.monotonic())
-        return _undiagnosed(f, entry["failed"][0])
-
-    diag["patchError"] = diagnosis.check_patch(diag["patch"], REPO_ROOT) if diag["patch"] else None
-    diag["diagnosed"] = True
-    diagnosis.record_usage(USAGE_LOG, f, diag)
-    entry["diag"] = diag
-    return diag
+    except Exception as e:  # never leave an entry stuck as "diagnosing"
+        entry["failed"] = (f"Could not auto-diagnose: unexpected {type(e).__name__}: {e}", time.monotonic())
 
 
 def _undiagnosed(f: dict, reason: str) -> dict:
@@ -245,7 +276,8 @@ def _undiagnosed(f: dict, reason: str) -> dict:
         "type": "Unclassified", "cat": "", "confidence": "",
         "cause": {"engineer": f.get("error") or "see log", "analyst": reason},
         "impact": "", "fixSummary": "", "fixFile": "", "patch": "", "diff": [],
-        "patchError": None, "prTitle": "", "prBranch": "", "usage": None, "diagnosed": False,
+        "patchError": None, "prTitle": "", "prBranch": "", "usage": None,
+        "diagnosed": False, "diagnosing": False,
     }
 
 
@@ -426,7 +458,7 @@ def _cli() -> int:
         return 0
     try:
         lo, hi = _resolve_window(args.start, args.end)
-        found = collect_failures(lo, hi)
+        found = collect_failures(lo, hi, wait_for_diagnosis=True)
     except HTTPException as e:
         print(f"error: {e.detail}", file=sys.stderr)
         return 2

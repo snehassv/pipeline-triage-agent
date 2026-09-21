@@ -1,6 +1,9 @@
 """HTTP behaviour: auth, caching, retry backoff and PR gating. Airflow and Claude are
 stubbed, so nothing leaves the process."""
 
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -22,8 +25,18 @@ DIAGNOSIS = {
 }
 
 
+class InlineExecutor:
+    """Runs background diagnoses immediately, so most tests can ignore the thread pool."""
+
+    def submit(self, fn, *args):
+        future = Future()
+        future.set_result(fn(*args))
+        return future
+
+
 @pytest.fixture
 def api(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "_executor", InlineExecutor())
     monkeypatch.setattr(main, "AGENT_TOKEN", TOKEN)
     monkeypatch.setattr(main, "GITHUB_REPO", "me/repo")
     monkeypatch.setattr(main, "USAGE_LOG", tmp_path / "usage.jsonl")
@@ -137,3 +150,38 @@ def test_pr_uses_the_agents_own_patch_not_the_callers(api, monkeypatch):
                  json={"id": f["id"], "patch": "malicious", "branch": "evil"})
     assert r.json() == {"number": 7, "url": "https://github.com/me/repo/pull/7"}
     assert opened[0]["patch"] == DIAGNOSIS["patch"] and opened[0]["prBranch"] == "agent/fix-x"
+
+
+def test_failures_return_immediately_while_diagnosis_runs(api, monkeypatch):
+    """The request doesn't wait on Claude: the first poll says `diagnosing`, a later
+    poll has the result."""
+    monkeypatch.setattr(main, "_executor", ThreadPoolExecutor(max_workers=2))
+    release = threading.Event()
+    stub_diagnose(monkeypatch)
+    real = diagnosis.diagnose
+    monkeypatch.setattr(diagnosis, "diagnose", lambda f, files: release.wait(5) and real(f, files))
+
+    [first] = get_failures(api)
+    assert first["diagnosing"] is True and first["diagnosed"] is False
+    assert "Diagnosing with" in first["cause"]["analyst"]
+
+    release.set()
+    main._executor.shutdown(wait=True)
+    [second] = get_failures(api)
+    assert second["diagnosing"] is False and second["diagnosed"] is True
+
+
+def test_unexpected_worker_error_does_not_leave_it_stuck(api, monkeypatch):
+    def boom(f, files):
+        raise OSError("git not found")
+    monkeypatch.setattr(diagnosis, "diagnose", boom)
+    [f] = get_failures(api)
+    assert f["diagnosing"] is False
+    assert "unexpected OSError: git not found" in f["cause"]["analyst"]
+
+
+def test_cli_mode_waits_for_diagnosis(api, monkeypatch):
+    monkeypatch.setattr(main, "_executor", ThreadPoolExecutor(max_workers=2))
+    stub_diagnose(monkeypatch)
+    [f] = main.collect_failures(None, None, wait_for_diagnosis=True)
+    assert f["diagnosed"] is True
