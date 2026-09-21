@@ -1,0 +1,214 @@
+[
+ {
+  "event": "::group::Log message source details"
+ },
+ {
+  "event": "/opt/airflow/logs/dag_id=product_dim_upsert/run_id=manual__2026-09-21T18:11:01.766113+00:00/task_id=load_to_warehouse/attempt=1.log"
+ },
+ {
+  "event": "::endgroup::"
+ },
+ {
+  "timestamp": "2026-09-21T18:11:02.856779Z",
+  "event": "::group::Pre Execute",
+  "level": "info",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 2412
+ },
+ {
+  "timestamp": "2026-09-21T18:11:02.885408Z",
+  "event": "DAG bundles loaded: dags-folder",
+  "level": "info",
+  "ti_id": "01a0c52a-0a35-7772-94ba-7e7382de3c48",
+  "dag_id": "product_dim_upsert",
+  "run_id": "manual__2026-09-21T18:11:01.766113+00:00",
+  "try_number": 1,
+  "map_index": -1,
+  "task_id": "load_to_warehouse",
+  "logger": "airflow.dag_processing.bundles.manager.DagBundlesManager",
+  "filename": "manager.py",
+  "lineno": 304
+ },
+ {
+  "timestamp": "2026-09-21T18:11:02.886917Z",
+  "event": "Filling up the DagBag from /opt/airflow/dags/dag_factory.py",
+  "level": "info",
+  "ti_id": "01a0c52a-0a35-7772-94ba-7e7382de3c48",
+  "dag_id": "product_dim_upsert",
+  "run_id": "manual__2026-09-21T18:11:01.766113+00:00",
+  "try_number": 1,
+  "map_index": -1,
+  "task_id": "load_to_warehouse",
+  "logger": "airflow.dag_processing.dagbag.BundleDagBag",
+  "filename": "dagbag.py",
+  "lineno": 460
+ },
+ {
+  "timestamp": "2026-09-21T18:11:03.095198Z",
+  "event": "Worker startup parse complete",
+  "level": "info",
+  "bundle_name": "dags-folder",
+  "bundle_version": null,
+  "dag_file": "dag_factory.py",
+  "dag_id": "product_dim_upsert",
+  "bundle_prepare_ms": 3,
+  "dag_file_parse_ms": 208,
+  "ti_id": "01a0c52a-0a35-7772-94ba-7e7382de3c48",
+  "run_id": "manual__2026-09-21T18:11:01.766113+00:00",
+  "try_number": 1,
+  "map_index": -1,
+  "task_id": "load_to_warehouse",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 1073
+ },
+ {
+  "timestamp": "2026-09-21T18:11:03.133625Z",
+  "event": "::endgroup::",
+  "level": "info",
+  "ti_id": "01a0c52a-0a35-7772-94ba-7e7382de3c48",
+  "dag_id": "product_dim_upsert",
+  "run_id": "manual__2026-09-21T18:11:01.766113+00:00",
+  "try_number": 1,
+  "map_index": -1,
+  "task_id": "load_to_warehouse",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 2232
+ },
+ {
+  "timestamp": "2026-09-21T18:11:03.181251Z",
+  "event": "Running statement: \n            INSERT INTO dim_product (product_id, product_name, category, updated_at)\n            SELECT product_id, product_name, category, updated_at FROM stg_products\n            ON CONFLICT (product_id) DO UPDATE\n              SET updated_at = EXCLUDED.updated_at;\n        , parameters: None",
+  "level": "info",
+  "ti_id": "01a0c52a-0a35-7772-94ba-7e7382de3c48",
+  "dag_id": "product_dim_upsert",
+  "run_id": "manual__2026-09-21T18:11:01.766113+00:00",
+  "try_number": 1,
+  "map_index": -1,
+  "task_id": "load_to_***",
+  "logger": "airflow.task.hooks.airflow.providers.postgres.hooks.postgres.PostgresHook",
+  "filename": "sql.py",
+  "lineno": 896
+ },
+ {
+  "timestamp": "2026-09-21T18:11:03.194809Z",
+  "event": "Task failed with exception",
+  "level": "error",
+  "ti_id": "01a0c52a-0a35-7772-94ba-7e7382de3c48",
+  "dag_id": "product_dim_upsert",
+  "run_id": "manual__2026-09-21T18:11:01.766113+00:00",
+  "try_number": 1,
+  "map_index": -1,
+  "task_id": "load_to_***",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 1676,
+  "error_detail": [
+   {
+    "exc_type": "CardinalityViolation",
+    "exc_value": "ON CONFLICT DO UPDATE command cannot affect row a second time\nHINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.",
+    "exc_notes": [],
+    "syntax_error": null,
+    "is_cause": false,
+    "frames": [
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 1579,
+      "name": "_run_task_and_map_outcome"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 197,
+      "name": "wrapper"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 2234,
+      "name": "_execute_task"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 197,
+      "name": "wrapper"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/task_runner.py",
+      "lineno": 2192,
+      "name": "_run_execute_callable"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/bases/operator.py",
+      "lineno": 462,
+      "name": "wrapper"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/providers/standard/operators/python.py",
+      "lineno": 231,
+      "name": "execute"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/providers/standard/operators/python.py",
+      "lineno": 254,
+      "name": "execute_callable"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/sdk/execution_time/callback_runner.py",
+      "lineno": 97,
+      "name": "run"
+     },
+     {
+      "filename": "/opt/airflow/dags/dag_factory.py",
+      "lineno": 66,
+      "name": "run"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/providers/common/sql/hooks/sql.py",
+      "lineno": 853,
+      "name": "run"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/airflow/providers/common/sql/hooks/sql.py",
+      "lineno": 904,
+      "name": "_run_command"
+     },
+     {
+      "filename": "/home/airflow/.local/lib/python3.13/site-packages/psycopg/cursor.py",
+      "lineno": 117,
+      "name": "execute"
+     }
+    ],
+    "is_group": false,
+    "exceptions": []
+   }
+  ]
+ },
+ {
+  "timestamp": "2026-09-21T18:11:03.196877Z",
+  "event": "::group::Post Execute",
+  "level": "info",
+  "ti_id": "01a0c52a-0a35-7772-94ba-7e7382de3c48",
+  "dag_id": "product_dim_upsert",
+  "run_id": "manual__2026-09-21T18:11:01.766113+00:00",
+  "try_number": 1,
+  "map_index": -1,
+  "task_id": "load_to_***",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 1677
+ },
+ {
+  "timestamp": "2026-09-21T18:11:03.201433Z",
+  "event": "::endgroup::",
+  "level": "info",
+  "ti_id": "01a0c52a-0a35-7772-94ba-7e7382de3c48",
+  "dag_id": "product_dim_upsert",
+  "run_id": "manual__2026-09-21T18:11:01.766113+00:00",
+  "try_number": 1,
+  "map_index": -1,
+  "task_id": "load_to_***",
+  "logger": "task",
+  "filename": "task_runner.py",
+  "lineno": 2379
+ }
+]
