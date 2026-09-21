@@ -1,9 +1,9 @@
 """
 Seed the local warehouse with fake data.
 
-Idempotent — drops and recreates everything, so it's safe to re-run whenever
-you want a clean slate. Deterministic: the same seed produces the same data
-every time, so failures reproduce identically.
+Idempotent — drops everything and rebuilds the schema from sql/migrations, so
+it's safe to re-run whenever you want a clean slate. Deterministic: the same seed
+produces the same data every time, so failures reproduce identically.
 
 Usage:
     python scripts/seed_warehouse.py
@@ -11,11 +11,17 @@ Usage:
 
 import csv
 import random
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import psycopg2
 from faker import Faker
+
+# Runs both as `python scripts/seed_warehouse.py` and `python -m scripts...`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts.db import CONN  # noqa: E402
+from scripts.migrate import apply_pending  # noqa: E402
 
 fake = Faker()
 Faker.seed(42)
@@ -23,14 +29,6 @@ random.seed(42)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 EXTRACT_DATE = datetime(2026, 9, 21)
-
-CONN = dict(
-    host="localhost",
-    port=5433,
-    user="warehouse",
-    password="warehouse",
-    dbname="warehouse",
-)
 
 N_PRODUCTS = 1000
 N_STORES = 50
@@ -42,90 +40,23 @@ REGIONS = ["Northeast", "Southeast", "Midwest", "Southwest", "West"]
 
 
 # ---------------------------------------------------------------------------
-# DDL
+# Schema — defined by sql/migrations, not here
 # ---------------------------------------------------------------------------
 
-def create_tables(cur):
-    cur.execute("DROP TABLE IF EXISTS fct_sales CASCADE")
-    cur.execute("DROP TABLE IF EXISTS stg_orders CASCADE")
-    cur.execute("DROP TABLE IF EXISTS stg_customers CASCADE")
-    cur.execute("DROP TABLE IF EXISTS stg_products CASCADE")
-    cur.execute("DROP TABLE IF EXISTS stg_stores CASCADE")
-    cur.execute("DROP TABLE IF EXISTS dim_product CASCADE")
-    cur.execute("DROP TABLE IF EXISTS dim_store CASCADE")
-    cur.execute("DROP TABLE IF EXISTS dim_hierarchy_v1 CASCADE")
+TABLES = [
+    "fct_sales", "stg_orders", "stg_customers", "stg_products", "stg_stores",
+    "dim_product", "dim_store", "dim_hierarchy_v1", "schema_migrations",
+]
 
-    cur.execute("""
-        CREATE TABLE stg_products (
-            product_id   INT,
-            product_name TEXT,
-            category     TEXT,
-            status       TEXT,
-            updated_at   TIMESTAMP
-        )
-    """)
 
-    # The PRIMARY KEY here is load-bearing: it's what makes the MERGE DAG
-    # fail with a real cardinality violation when the source has dupes.
-    cur.execute("""
-        CREATE TABLE dim_product (
-            product_id   INT PRIMARY KEY,
-            product_name TEXT,
-            category     TEXT,
-            status       TEXT,
-            updated_at   TIMESTAMP
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE stg_stores (
-            store_id   INT,
-            store_name TEXT,
-            region     TEXT,
-            updated_at TIMESTAMP
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE dim_store (
-            store_id   INT PRIMARY KEY,
-            store_name TEXT,
-            region     TEXT,
-            updated_at TIMESTAMP
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE stg_customers (
-            customer_id INT,
-            name        TEXT,
-            email       TEXT,
-            region      TEXT,
-            created_at  TIMESTAMP
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE stg_orders (
-            order_id    INT,
-            customer_id INT,
-            store_id    INT,
-            product_id  INT,
-            qty         INT,
-            amount      NUMERIC(10, 2),
-            order_date  DATE
-        )
-    """)
-
-    # Exists only so a scenario script can drop it and break a DAG.
-    cur.execute("""
-        CREATE TABLE dim_hierarchy_v1 (
-            node_id     INT PRIMARY KEY,
-            parent_id   INT,
-            node_name   TEXT,
-            level_depth INT
-        )
-    """)
+def rebuild_schema(conn):
+    """Drop everything, then rebuild the schema by applying every migration — the
+    same path a real schema change takes, so the seed can't drift from it."""
+    with conn.cursor() as cur:
+        for table in TABLES:
+            cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+    conn.commit()
+    apply_pending(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -249,10 +180,9 @@ def main():
 
     conn = psycopg2.connect(**CONN)
     try:
+        print("creating tables from sql/migrations...")
+        rebuild_schema(conn)
         with conn.cursor() as cur:
-            print("creating tables...")
-            create_tables(cur)
-
             print("seeding...")
             seed_products(cur)
             seed_stores(cur)

@@ -83,6 +83,7 @@ _load_dotenv(AGENT_DIR / ".env")
 # Imported after the .env load so AGENT_MODEL etc. are visible to them.
 from agent import diagnosis  # noqa: E402
 from agent.airflow import AirflowClient, AirflowError, reduce_log  # noqa: E402
+from scripts import ddl_policy  # noqa: E402
 
 AIRFLOW_URL      = os.environ.get("AIRFLOW_URL", "http://localhost:8080").rstrip("/")
 AIRFLOW_USERNAME = os.environ.get("AIRFLOW_USERNAME", "airflow")
@@ -170,7 +171,8 @@ def read_task_log(f: dict) -> tuple:
 def read_sources(dag_id: str) -> dict:
     """{repo-relative path: text} for the files a fix could touch. DAGs here come from
     dag_factory.py, so the factory alone doesn't say what a given DAG does — its
-    pipelines.yaml entry does. Both are sent whole, so a patch can quote them exactly."""
+    pipelines.yaml entry does. The migrations define the warehouse tables the DAGs
+    read and write. All are sent whole, so a patch can quote them exactly."""
     files = {}
     try:
         rel, source = airflow.dag_file(dag_id)
@@ -182,6 +184,8 @@ def read_sources(dag_id: str) -> dict:
         text = config.read_text()
         if re.search(rf"dag_id:\s*{re.escape(dag_id)}\s*$", text, re.MULTILINE):
             files[PIPELINES_CONFIG] = text
+    for migration in sorted((REPO_ROOT / ddl_policy.MIGRATIONS_DIR).glob("*.sql")):
+        files[f"{ddl_policy.MIGRATIONS_DIR}/{migration.name}"] = migration.read_text()
     return files
 
 
@@ -277,7 +281,7 @@ def _undiagnosed(f: dict, reason: str) -> dict:
         "cause": {"engineer": f.get("error") or "see log", "analyst": reason},
         "impact": "", "rootCause": "", "fixSummary": "", "fixFile": "", "patch": "",
         "patchWithheld": False, "diff": [],
-        "patchError": None, "prTitle": "", "prBranch": "", "usage": None,
+        "patchError": None, "policyError": None, "prTitle": "", "prBranch": "", "usage": None,
         "diagnosed": False, "diagnosing": False,
     }
 
@@ -382,6 +386,8 @@ def pr_blocker(f: dict) -> Optional[str]:
         return "only High-confidence fixes can open a PR"
     if f.get("patchError"):
         return "the suggested patch doesn't apply to the current code"
+    if f.get("policyError"):
+        return f"the patch breaks the migration rules: {f['policyError']}"
     if not _BRANCH_RE.match(f.get("prBranch") or ""):
         return f"invalid branch name: {f.get('prBranch')!r}"
     return None
@@ -443,6 +449,18 @@ def _pr_body(f: dict) -> str:
 **Impact:** {f.get('impact') or 'n/a'}
 
 **Fix:** {f.get('fixSummary') or 'n/a'}
+{_migration_note(f)}"""
+
+
+def _migration_note(f: dict) -> str:
+    migrations = [p for p in f.get("fixFile", "").split(", ")
+                  if p.startswith(ddl_policy.MIGRATIONS_DIR + "/")]
+    if not migrations:
+        return ""
+    return f"""
+**Schema change:** this PR adds {", ".join(f"`{m}`" for m in migrations)}. Merging does not \
+change the warehouse. After review and merge, apply it with `python -m scripts.migrate` \
+(it re-checks the file against the DDL-only rules before running it).
 """
 
 

@@ -169,3 +169,22 @@ def test_usage_log_round_trip(tmp_path):
     assert "2 diagnoses" in summary
     assert "claude-sonnet-5: 2 diagnoses · 6,000 in / 1,000 out tokens" in summary
     assert "$0.0220 total, $0.0110 per diagnosis" in summary
+
+
+def test_prompt_names_the_next_migration_number():
+    files = {"dags/dag_factory.py": "...", "sql/migrations/0001_initial_schema.sql": "CREATE TABLE a (id INT);"}
+    assert "Next migration number: 0002" in diagnosis.build_prompt(FAILURE, files)
+    assert "Next migration number" not in diagnosis.build_prompt(FAILURE, {"dags/dag_factory.py": "..."})
+
+
+def test_a_migration_that_breaks_the_rules_is_flagged():
+    bad = """diff --git a/sql/migrations/0002_cleanup.sql b/sql/migrations/0002_cleanup.sql
+new file mode 100644
+--- /dev/null
++++ b/sql/migrations/0002_cleanup.sql
+@@ -0,0 +1 @@
++DELETE FROM stg_products WHERE product_id = 1;
+"""
+    result = diagnosis.diagnose(FAILURE, {}, FakeClient(reply({**GOOD, "patch": bad})))
+    assert "found DELETE" in result["policyError"]
+    assert diagnosis.diagnose(FAILURE, {}, FakeClient(reply(GOOD)))["policyError"] is None

@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from scripts import ddl_policy
+
 MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-5")
 MAX_SOURCE_CHARS = 60_000
 
@@ -72,7 +74,8 @@ Guidelines:
 - impact: one sentence on what data or reports are stale or wrong because of this failure.
 - rootCause: where the problem actually lives.
   - code: the DAG or its logic is wrong for correct inputs (a bug, a wrong column list, a missing step).
-  - config: a setting in the repository is wrong (a path, a table name, a schedule, a connection id).
+  - config: a setting in the repository is wrong (a path, a table name, a schedule, a connection id), \
+or the warehouse schema itself needs to change.
   - data: the code is doing its job and the input is bad — duplicate business keys, nulls where there \
 should be none, an unexpected volume, a data-quality check failing because the data really is wrong.
   - environment: something outside the repository — a file that never arrived, a dropped or renamed \
@@ -84,6 +87,14 @@ relative to the repository root) against the files exactly as shown, with three 
 data or environment, leave patch empty and say in fixSummary what a person should check or do. Never \
 make code tolerate bad input to get a run through — deduplicating, filtering or defaulting away bad \
 rows, loosening a check, or skipping a missing file hides the problem from the people who own it.
+- Warehouse schema: tables are defined by the numbered files in sql/migrations, applied in order. When \
+the right fix is a schema change — for example an upstream extract now carries a column the pipeline \
+should accept — the patch adds ONE new file sql/migrations/<next number>_<snake_case_slug>.sql (a new \
+file in the patch: "new file mode 100644" and "--- /dev/null"). Migrations may only contain additive \
+DDL: CREATE, ALTER ... ADD, COMMENT ON. Never DROP, TRUNCATE, RENAME, CREATE TABLE ... AS, or any \
+INSERT/UPDATE/DELETE; never edit an existing migration; never put CREATE/ALTER TABLE in Python code. If \
+the change can't be made additively, leave patch empty and explain what a person should do. Say in \
+fixSummary whether anyone should confirm the upstream change is intended before applying it.
 - confidence: High only when the evidence pins down the root cause and the patch (or the recommended \
 action) fully resolves it; Medium when the cause is likely but not certain; Low otherwise.
 - prTitle: a conventional-commit style title. prBranch: agent/fix-<short-slug>, lowercase, no spaces."""
@@ -100,12 +111,15 @@ def build_prompt(failure: dict, files: dict) -> str:
         if len(text) > MAX_SOURCE_CHARS:
             text = text[:MAX_SOURCE_CHARS] + f"\n[... truncated: file is {len(text)} characters ...]"
         sources.append(f'<file path="{path}">\n{text}\n</file>')
+    migrations = [p.rsplit("/", 1)[1] for p in files if p.startswith(ddl_policy.MIGRATIONS_DIR + "/")]
+    next_migration = (f"\nNext migration number: {ddl_policy.next_migration_number(migrations)}"
+                      if migrations else "")
     return f"""A task failed. Diagnose it and propose a fix.
 
 DAG: {failure['dag']}
 Failed task: {failure['task']} ({failure['operator']})
 Environment: {failure['env']}
-Failed runs in this window: {failure.get('occurrences', 1)}
+Failed runs in this window: {failure.get('occurrences', 1)}{next_migration}
 
 <task_log>
 {log_text}
@@ -152,6 +166,8 @@ def diagnose(failure: dict, files: dict, client=None) -> dict:
     # A patch for a data or environment problem is kept for the reader to see, but it is
     # never offered as a PR (see pr_blocker in main.py).
     result["patchWithheld"] = bool(patch) and result.get("rootCause") not in PATCHABLE_ROOT_CAUSES
+    # Schema changes must be new, additive-DDL-only migration files (scripts/ddl_policy.py).
+    result["policyError"] = ddl_policy.check_patch(patch) if patch else None
     patch = patch + "\n" if patch else ""
     result.update({
         "patch": patch,
