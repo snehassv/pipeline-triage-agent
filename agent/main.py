@@ -275,7 +275,8 @@ def _undiagnosed(f: dict, reason: str) -> dict:
     return {
         "type": "Unclassified", "cat": "", "confidence": "",
         "cause": {"engineer": f.get("error") or "see log", "analyst": reason},
-        "impact": "", "fixSummary": "", "fixFile": "", "patch": "", "diff": [],
+        "impact": "", "rootCause": "", "fixSummary": "", "fixFile": "", "patch": "",
+        "patchWithheld": False, "diff": [],
         "patchError": None, "prTitle": "", "prBranch": "", "usage": None,
         "diagnosed": False, "diagnosing": False,
     }
@@ -371,6 +372,10 @@ def pr_blocker(f: dict) -> Optional[str]:
         return "set GITHUB_REPO=owner/name to enable PRs"
     if not f.get("diagnosed"):
         return "this failure hasn't been diagnosed"
+    if f.get("rootCause") not in diagnosis.PATCHABLE_ROOT_CAUSES:
+        if not f.get("rootCause"):  # a diagnosis from before this check existed
+            return "this diagnosis doesn't say where the root cause is — re-diagnose it"
+        return f"the root cause is in the {f['rootCause']}, not the code — fix it at the source"
     if not f.get("patch"):
         return "no code change was suggested"
     if f.get("confidence") != "High":

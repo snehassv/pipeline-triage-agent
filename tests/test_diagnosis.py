@@ -48,7 +48,7 @@ class FakeClient:
 GOOD = {
     "type": "Schema drift", "cat": "schema", "confidence": "High",
     "cause": {"engineer": "effective_ts added upstream", "analyst": "the file has a new column"},
-    "impact": "stg_orders is stale", "fixSummary": "point the load at stg_orders_v2",
+    "impact": "stg_orders is stale", "rootCause": "config", "fixSummary": "point the load at stg_orders_v2",
     "patch": PATCH, "prTitle": "fix: orders schema", "prBranch": "agent/fix-orders-schema",
 }
 
@@ -74,6 +74,23 @@ def test_request_uses_the_json_schema_and_sends_source_files():
     prompt = call["messages"][0]["content"]
     assert '<file path="dags/dag_factory.py">' in prompt
     assert "effective_ts" in prompt
+
+
+def test_root_cause_comes_before_the_fix_in_the_schema():
+    """Structured output is generated in schema order: the model has to say where the
+    problem is before it writes a patch."""
+    order = list(diagnosis.FIX_SCHEMA["properties"])
+    assert order.index("rootCause") < order.index("fixSummary") < order.index("patch")
+    assert diagnosis.FIX_SCHEMA["properties"]["rootCause"]["enum"] == ["code", "config", "data", "environment"]
+
+
+@pytest.mark.parametrize("root_cause, withheld", [
+    ("code", False), ("config", False), ("data", True), ("environment", True),
+])
+def test_patch_for_data_or_environment_is_withheld(root_cause, withheld):
+    result = diagnosis.diagnose(FAILURE, {}, FakeClient(reply({**GOOD, "rootCause": root_cause})))
+    assert result["patchWithheld"] is withheld
+    assert result["patch"]  # still returned, so the reader can see what was proposed
 
 
 def test_schema_requires_every_field():
@@ -145,6 +162,8 @@ def test_usage_log_round_trip(tmp_path):
     result = diagnosis.diagnose(FAILURE, {}, FakeClient(reply(GOOD)))
     diagnosis.record_usage(log, FAILURE, result)
     diagnosis.record_usage(log, FAILURE, result)
+    row = json.loads(log.read_text().splitlines()[0])
+    assert row["root_cause"] == "config" and row["patch_withheld"] is False
 
     summary = diagnosis.summarize_usage(log)
     assert "2 diagnoses" in summary

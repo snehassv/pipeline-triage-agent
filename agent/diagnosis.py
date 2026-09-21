@@ -27,6 +27,11 @@ PRICES = {
 
 CATEGORIES = ["schema", "gcs", "sensor", "table", "dq", "merge", "auth"]
 
+# Where the root cause lives. Only a code or config problem is fixed by changing the repo;
+# the agent refuses to open a PR for anything else, however confident the model is.
+ROOT_CAUSES = ["code", "config", "data", "environment"]
+PATCHABLE_ROOT_CAUSES = {"code", "config"}
+
 FIX_SCHEMA = {
     "type": "object",
     "properties": {
@@ -43,12 +48,15 @@ FIX_SCHEMA = {
             "additionalProperties": False,
         },
         "impact": {"type": "string"},
+        # Before the fix fields on purpose: the reply is generated in schema order, so the
+        # model commits to where the problem is before it writes any patch.
+        "rootCause": {"type": "string", "enum": ROOT_CAUSES},
         "fixSummary": {"type": "string"},
         "patch": {"type": "string"},
         "prTitle": {"type": "string"},
         "prBranch": {"type": "string"},
     },
-    "required": ["type", "cat", "confidence", "cause", "impact", "fixSummary",
+    "required": ["type", "cat", "confidence", "cause", "impact", "rootCause", "fixSummary",
                  "patch", "prTitle", "prBranch"],
     "additionalProperties": False,
 }
@@ -62,11 +70,20 @@ Guidelines:
 - cause.engineer: the technical root cause in 1-2 sentences, naming the table, column, file or setting involved.
 - cause.analyst: the same thing in plain language for a data analyst who doesn't read tracebacks, 1-2 sentences.
 - impact: one sentence on what data or reports are stale or wrong because of this failure.
-- patch: a git-format unified diff (paths prefixed a/ and b/, relative to the repository root) against \
-the files exactly as shown, with three lines of context. Only propose a patch when changing code or \
-config is the right remedy. When the real problem is upstream data or the environment — duplicate keys \
-in a source table, a file that never arrived, a data-quality threshold doing its job — leave patch empty \
-and say in fixSummary what a person should check or do instead. Never loosen a check just to make it pass.
+- rootCause: where the problem actually lives.
+  - code: the DAG or its logic is wrong for correct inputs (a bug, a wrong column list, a missing step).
+  - config: a setting in the repository is wrong (a path, a table name, a schedule, a connection id).
+  - data: the code is doing its job and the input is bad — duplicate business keys, nulls where there \
+should be none, an unexpected volume, a data-quality check failing because the data really is wrong.
+  - environment: something outside the repository — a file that never arrived, a dropped or renamed \
+table, a missing permission, an upstream system being down.
+  If the code would be correct had the data or environment been as expected, the root cause is data or \
+environment, not code — even if code could be changed to tolerate it.
+- patch: only when rootCause is code or config: a git-format unified diff (paths prefixed a/ and b/, \
+relative to the repository root) against the files exactly as shown, with three lines of context. For \
+data or environment, leave patch empty and say in fixSummary what a person should check or do. Never \
+make code tolerate bad input to get a run through — deduplicating, filtering or defaulting away bad \
+rows, loosening a check, or skipping a missing file hides the problem from the people who own it.
 - confidence: High only when the evidence pins down the root cause and the patch (or the recommended \
 action) fully resolves it; Medium when the cause is likely but not certain; Low otherwise.
 - prTitle: a conventional-commit style title. prBranch: agent/fix-<short-slug>, lowercase, no spaces."""
@@ -132,6 +149,9 @@ def diagnose(failure: dict, files: dict, client=None) -> dict:
         raise DiagnosisError("The model's reply wasn't valid JSON.")
 
     patch = result.pop("patch", "").strip()
+    # A patch for a data or environment problem is kept for the reader to see, but it is
+    # never offered as a PR (see pr_blocker in main.py).
+    result["patchWithheld"] = bool(patch) and result.get("rootCause") not in PATCHABLE_ROOT_CAUSES
     patch = patch + "\n" if patch else ""
     result.update({
         "patch": patch,
@@ -203,7 +223,8 @@ def record_usage(path: Path, failure: dict, diag: dict) -> None:
     row = {
         "at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "dag": failure["dag"], "task": failure["task"], "run_id": failure["run_id"],
-        "confidence": diag.get("confidence"), "has_patch": bool(diag.get("patch")),
+        "confidence": diag.get("confidence"), "root_cause": diag.get("rootCause"),
+        "has_patch": bool(diag.get("patch")), "patch_withheld": bool(diag.get("patchWithheld")),
         **diag["usage"],
     }
     with path.open("a") as fh:

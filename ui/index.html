@@ -231,6 +231,10 @@
   .diff .file { margin: 0; background: var(--surface-2); color: var(--text); font-weight: 600; padding-top: 4px; padding-bottom: 4px; }
   .diff .hunk { color: var(--faint); background: var(--surface-2); }
   .patch-warn { margin-top: 8px; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; }
+  .chip.root { margin-left: 2px; }
+  .chip.root-data, .chip.root-environment { border-color: #f1cf8f; color: var(--warn); background: #fffaf0; }
+  .withheld { margin-top: 8px; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; }
+  .diff.muted { opacity: .7; }
   .patch-warn .mono { display: block; margin-top: 4px; font-size: 11.5px; white-space: pre-wrap; word-break: break-word; }
   .panel-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .panel-foot .why { font-size: 12.5px; color: var(--muted); }
@@ -387,6 +391,8 @@
     table: "Table", gcs: "File / export", auth: "Auth",
   };
   const CONF_RANK = { High: 3, Medium: 2, Low: 1 };
+  const ROOT_LABEL = { code: "code", config: "config", data: "data", environment: "environment" };
+  const PATCHABLE = new Set(["code", "config"]);
 
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g,
@@ -495,6 +501,9 @@
   function prBlocker(f) {
     if (f.diagnosing) return "Diagnosis in progress";
     if (!f.diagnosed) return "Needs a diagnosis first";
+    if (!PATCHABLE.has(f.rootCause)) return f.rootCause
+      ? `Root cause is in the ${f.rootCause} — fix it at the source`
+      : "Diagnosis doesn't say where the root cause is";
     if (!f.patch) return "No code change suggested";
     if (f.confidence !== "High") return "Only High-confidence fixes can open a PR";
     if (f.patchError) return "Patch doesn't apply to the current code";
@@ -619,6 +628,7 @@
       <div class="diag-type">
         <strong>${esc(f.type)}</strong>${catBadge(f.cat)}
         <span class="badge conf-${esc(f.confidence)}">${esc(f.confidence)} confidence</span>
+        ${ROOT_LABEL[f.rootCause] ? `<span class="chip root root-${esc(f.rootCause)}" title="Where the root cause lives">Root cause: ${esc(ROOT_LABEL[f.rootCause])}</span>` : ""}
       </div>
       <p class="cause">${esc(cause)}</p>
       ${f.impact ? `<p class="impact">${esc(f.impact)}</p>` : ""}
@@ -628,11 +638,14 @@
       </div>`;
 
     const hasDiff = (f.diff || []).length > 0;
+    const heading = f.patchWithheld ? "Recommended action" : hasDiff ? "Suggested fix" : "Recommended action";
     const diff = f.diagnosed ? `
       <div class="section">
-        <h3>${hasDiff ? "Suggested fix" : "Recommended action"}</h3>
+        <h3>${heading}</h3>
         <div>${esc(f.fixSummary)}</div>
-        ${hasDiff ? `<div class="diff">${f.diff.map((d) => {
+        ${f.patchWithheld ? `<div class="withheld">The root cause is in the ${esc(f.rootCause)}, so this code change
+          would only hide it. It's shown for reference and can't be raised as a PR.</div>` : ""}
+        ${hasDiff ? `<div class="diff${f.patchWithheld ? " muted" : ""}">${f.diff.map((d) => {
           const t = ["add", "del", "file", "hunk"].includes(d.t) ? d.t : "ctx";
           const mark = { add: "+ ", del: "- ", ctx: "  " }[t] || "";
           return `<div class="${t}">${mark}${esc(d.s)}</div>`;
