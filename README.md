@@ -60,16 +60,16 @@ cd pipeline-triage-agent
 cp .env.example .env          # Airflow settings (FERNET_KEY)
 docker compose up -d          # Airflow + Postgres warehouse
 
-python scripts/seed_warehouse.py     # deterministic fake data
+python scripts/seed_warehouse.py     # schema from sql/migrations + deterministic fake data
 ```
 
 Unpause the DAGs in the Airflow UI at `localhost:8080`, or trigger failures on
 demand:
 
 ```bash
-python scripts/scenarios/inject_duplicate_product_keys.py
-python scripts/scenarios/add_column_to_orders_extract.py
-python scripts/scenarios/reset.py     # restore the clean seed
+python -m scripts.scenarios.inject_duplicate_product_keys
+python -m scripts.scenarios.add_column_to_orders_extract
+python -m scripts.scenarios.reset     # restore the clean seed
 ```
 
 Then configure and start the agent:
@@ -123,6 +123,30 @@ tracebacks would prove nothing about whether the diagnosis works.
 DAGs are generated from config rather than hand-written — eight templates in
 `dags/dag_factory.py`, and as many DAGs as you list in
 `dags/config/pipelines.yaml`. Add entries to scale up.
+
+### Schema migrations
+
+The warehouse's tables are defined by numbered files in `sql/migrations/`, and
+`python -m scripts.migrate` applies any that haven't run yet (`--status` lists
+them). The seed rebuilds the schema through the same runner, so there's one
+definition of every table.
+
+This is also where the agent may propose schema fixes. When upstream data
+legitimately changes shape — the orders extract gains a column — the fix is a new
+migration, raised as a PR like any other change. Migrations are restricted to
+**additive DDL**: `CREATE`, `ALTER … ADD`, `COMMENT ON`. No `INSERT`, `UPDATE`,
+`DELETE`, `TRUNCATE`, `DROP`, `RENAME` or `CREATE TABLE … AS`, no edits to existing
+migrations, and no `CREATE`/`ALTER TABLE` hidden in Python. The rules live in
+`scripts/ddl_policy.py` and are enforced twice: the agent won't offer a PR that
+breaks them, and the runner won't apply a file that breaks them, whoever wrote it.
+
+Merging a migration PR doesn't touch the warehouse; a person applies it with
+`python -m scripts.migrate` after review. Once it's merged, the seed includes it —
+so the schema-drift scenario stops failing, which is the point. Remove the
+migration locally if you want to reproduce the failure again.
+
+A warehouse created before migrations existed has the tables but no record of
+them; rebuild it once with `python -m scripts.scenarios.reset`.
 
 ---
 
@@ -190,6 +214,7 @@ next to the suggested diff rather than being inferred after the fact.
   "patchError": null,                          // git's message if the patch doesn't apply
   "patchWithheld": false,                      // true if a patch came back for a data or
                                                // environment problem: shown, never raised
+  "policyError": null,                         // why the patch breaks the migration rules
   "diff": [ { "t": "file|hunk|ctx|add|del", "s": "..." } ],   // the patch, for display
   "prTitle": "fix: add effective_ts to stg_orders",
   "prBranch": "agent/fix-orders-effective-ts",
@@ -211,6 +236,9 @@ posture you'd give any service with production write access:
 
 - **Token header required on every endpoint.** Without it, any local process —
   or a stray browser tab — could trigger real git operations.
+- **Schema changes are additive DDL only.** The agent can propose a new migration
+  but never data changes or anything destructive, and it never runs SQL against
+  the warehouse itself; applying a merged migration is a separate human step.
 - **PRs are built from the agent's own diagnosis, never from request content.**
   The caller names a failure; the agent re-checks every gate (High confidence,
   patch applies, valid branch name) and applies the patch with `git apply`, which

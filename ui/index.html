@@ -507,6 +507,7 @@
     if (!f.patch) return "No code change suggested";
     if (f.confidence !== "High") return "Only High-confidence fixes can open a PR";
     if (f.patchError) return "Patch doesn't apply to the current code";
+    if (f.policyError) return "Patch breaks the migration rules";
     if (!CFG || !CFG.prRepo) return "Set GITHUB_REPO on the agent to enable PRs";
     return null;
   }
@@ -650,6 +651,8 @@
           const mark = { add: "+ ", del: "- ", ctx: "  " }[t] || "";
           return `<div class="${t}">${mark}${esc(d.s)}</div>`;
         }).join("")}</div>` : `<div class="file">No code change suggested — this needs a person to act on.</div>`}
+        ${f.policyError && !f.patchWithheld ? `<div class="patch-warn">This change breaks the migration rules (additive DDL only, new files only), so it can't be raised as a PR.
+          <span class="mono">${esc(f.policyError)}</span></div>` : ""}
         ${f.patchError ? `<div class="patch-warn">This patch doesn't apply cleanly to the current code, so it can't be raised as a PR.
           <span class="mono">${esc(f.patchError)}</span></div>` : ""}
       </div>` : "";
@@ -717,6 +720,8 @@
         <dt>File</dt><dd>${esc(f.fixFile)}</dd>
         <dt>Title</dt><dd>${esc(f.prTitle)}</dd>
       </dl>
+      ${(f.fixFile || "").includes("sql/migrations/") ? `<p>This adds a schema migration. Merging the PR doesn't change the warehouse;
+        after review, apply it with <span class="mono">python -m scripts.migrate</span>.</p>` : ""}
       <div class="error" id="modal-error" hidden></div>
       <div class="actions">
         <button class="btn" type="button" data-action="cancel">Cancel</button>

@@ -126,6 +126,7 @@ def test_pr_for_unknown_failure_is_404(api):
     ({"rootCause": "data", "patchWithheld": True}, "root cause is in the data"),
     ({"rootCause": "environment"}, "root cause is in the environment"),
     ({"rootCause": None}, "doesn't say where the root cause is"),
+    ({"policyError": "DELETE isn't allowed"}, "breaks the migration rules"),
     ({"patch": ""}, "no code change"),
     ({"prBranch": "bad branch; rm -rf"}, "invalid branch"),
 ])
