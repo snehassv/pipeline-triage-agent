@@ -32,7 +32,7 @@ CONN = dict(
     dbname="warehouse",
 )
 
-N_PRODUCTS = 500
+N_PRODUCTS = 1000
 N_STORES = 50
 N_CUSTOMERS = 2000
 N_ORDERS = 20000
