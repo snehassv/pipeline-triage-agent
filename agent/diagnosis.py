@@ -30,7 +30,7 @@ CATEGORIES = ["schema", "gcs", "sensor", "table", "dq", "merge", "auth"]
 FIX_SCHEMA = {
     "type": "object",
     "properties": {
-        "type": {"type": "string", "description": "short failure class, e.g. 'Schema drift'"},
+        "type": {"type": "string", "description": "2-4 word failure class, e.g. 'Schema drift'"},
         "cat": {"type": "string", "enum": CATEGORIES},
         "confidence": {"type": "string", "enum": ["High", "Medium", "Low"]},
         "cause": {
@@ -58,6 +58,7 @@ You diagnose failed tasks from their logs and source code, explain the root caus
 and propose the smallest correct fix.
 
 Guidelines:
+- type: a 2-4 word failure class shown as a badge, e.g. "Schema drift", "Duplicate source keys", "Missing table".
 - cause.engineer: the technical root cause in 1-2 sentences, naming the table, column, file or setting involved.
 - cause.analyst: the same thing in plain language for a data analyst who doesn't read tracebacks, 1-2 sentences.
 - impact: one sentence on what data or reports are stale or wrong because of this failure.
