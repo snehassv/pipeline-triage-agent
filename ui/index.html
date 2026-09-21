@@ -216,6 +216,8 @@
     color: var(--muted); cursor: pointer; text-transform: none; letter-spacing: 0;
   }
   .toggle button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+  .toggle button:disabled { cursor: not-allowed; opacity: .55; }
+  .usage { margin-top: 10px; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
   .cause { margin: 0; line-height: 1.6; }
   .impact { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--warn); background: var(--warn-bg); border-radius: 0 6px 6px 0; font-size: 13px; }
   .notice { padding: 12px 14px; border-radius: 8px; background: var(--surface-2); color: var(--muted); font-size: 13px; }
@@ -226,6 +228,10 @@
   .diff .add { background: var(--diff-add-bg); color: var(--diff-add); }
   .diff .del { background: var(--diff-del-bg); color: var(--diff-del); }
   .diff .ctx { color: var(--muted); }
+  .diff .file { background: var(--surface-2); color: var(--text); font-weight: 600; padding-top: 4px; padding-bottom: 4px; }
+  .diff .hunk { color: var(--faint); background: var(--surface-2); }
+  .patch-warn { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; }
+  .patch-warn .mono { display: block; margin-top: 4px; font-size: 11.5px; white-space: pre-wrap; word-break: break-word; }
   .panel-foot { padding: 14px 18px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .panel-foot .why { font-size: 12px; color: var(--muted); }
   .pr-done { font-size: 13px; color: var(--ok); font-weight: 600; }
@@ -241,6 +247,13 @@
   .modal dd { margin: 0; font-family: var(--mono); font-size: 12px; word-break: break-all; }
   .modal .actions { display: flex; justify-content: flex-end; gap: 8px; }
   .modal .error { color: var(--err); font-size: 13px; margin: -6px 0 14px; }
+
+  /* ---------- mid-width with the panel open: keep the table to its essentials ---------- */
+  .table-wrap { overflow-x: auto; }
+  @media (max-width: 1320px) {
+    .layout.open .col-cat, .layout.open .col-when, .layout.open .col-runs { display: none; }
+    .layout.open { grid-template-columns: minmax(0, 1fr) minmax(380px, 480px); }
+  }
 
   /* ---------- narrow screens: panel becomes a full-screen sheet ---------- */
   @media (max-width: 1000px) {
@@ -289,7 +302,7 @@
   </div>
 
   <div id="layout" class="layout">
-    <div class="card">
+    <div class="card table-wrap">
       <table>
         <thead>
           <tr>
@@ -388,9 +401,8 @@
     const res = await fetch("/pull-requests", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Agent-Token": CFG.token },
-      body: JSON.stringify({
-        dag: f.dag, repo: f.repo, file: f.fixFile, diff: f.diff, title: f.prTitle, branch: f.prBranch,
-      }),
+      // Only the id: the agent opens the PR from its own copy of the diagnosis.
+      body: JSON.stringify({ id: f.id }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.detail || `agent returned ${res.status}`);
@@ -502,20 +514,24 @@
         <span class="badge conf-${esc(f.confidence)}">${esc(f.confidence)} confidence</span>
       </div>
       <p class="cause">${esc(cause)}</p>
-      ${f.impact ? `<p class="impact">${esc(f.impact)}</p>` : ""}` : `
+      ${f.impact ? `<p class="impact">${esc(f.impact)}</p>` : ""}
+      ${usageLine(f.usage)}` : `
       <div class="notice">${esc((f.cause || {}).analyst || "Not diagnosed.")}
         ${f.error ? `<span class="mono">${esc(f.error)}</span>` : ""}
       </div>`;
 
-    const diff = (f.diff || []).length ? `
+    const hasDiff = (f.diff || []).length > 0;
+    const diff = f.diagnosed ? `
       <div class="section">
-        <h3>Suggested fix</h3>
+        <h3>${hasDiff ? "Suggested fix" : "Recommended action"}</h3>
         <div>${esc(f.fixSummary)}</div>
-        <div class="file">${esc(f.fixFile)}</div>
-        <div class="diff">${f.diff.map((d) => {
-          const t = ["add", "del"].includes(d.t) ? d.t : "ctx";
-          return `<div class="${t}">${t === "add" ? "+ " : t === "del" ? "- " : "  "}${esc(d.s)}</div>`;
-        }).join("")}</div>
+        ${hasDiff ? `<div class="diff">${f.diff.map((d) => {
+          const t = ["add", "del", "file", "hunk"].includes(d.t) ? d.t : "ctx";
+          const mark = { add: "+ ", del: "- ", ctx: "  " }[t] || "";
+          return `<div class="${t}">${mark}${esc(d.s)}</div>`;
+        }).join("")}</div>` : `<div class="file">No code change suggested — this needs a person to act on.</div>`}
+        ${f.patchError ? `<div class="patch-warn">This patch doesn't apply cleanly to the current code, so it can't be raised as a PR.
+          <span class="mono">${esc(f.patchError)}</span></div>` : ""}
       </div>` : "";
 
     panel.innerHTML = `
@@ -542,10 +558,11 @@
         </div>
         <div class="section">
           <h3>Diagnosis
-            ${f.diagnosed ? `<span class="toggle" role="group" aria-label="Explanation for">
-              <button type="button" data-audience="engineer" aria-pressed="${state.audience === "engineer"}">Engineer</button>
-              <button type="button" data-audience="analyst" aria-pressed="${state.audience === "analyst"}">Analyst</button>
-            </span>` : ""}
+            <span class="toggle" role="group" aria-label="Explanation for"
+              ${f.diagnosed ? "" : `title="Available once the failure is diagnosed"`}>
+              <button type="button" data-audience="engineer" aria-pressed="${state.audience === "engineer"}" ${f.diagnosed ? "" : "disabled"}>Engineer</button>
+              <button type="button" data-audience="analyst" aria-pressed="${state.audience === "analyst"}" ${f.diagnosed ? "" : "disabled"}>Analyst</button>
+            </span>
           </h3>
           ${diagnosis}
         </div>
@@ -555,12 +572,20 @@
     panel.querySelector(".panel-body").scrollTop = scroll;
   }
 
-  // Why the PR button is disabled, or null when it can be used. PRs stay gated to
-  // High-confidence fixes; everything else is a suggestion for a human.
+  function usageLine(u) {
+    if (!u) return "";
+    const n = (x) => Number(x || 0).toLocaleString();
+    const cost = u.cost_usd == null ? "" : ` · $${Number(u.cost_usd).toFixed(4)}`;
+    return `<div class="usage">Diagnosed by ${esc(u.model)} · ${n(u.input_tokens)} in / ${n(u.output_tokens)} out tokens${cost} · ${esc(u.seconds)}s</div>`;
+  }
+
+  // Why the PR button is disabled, or null when it can be used. Mirrors pr_blocker() in
+  // agent/main.py, which enforces the same rules server-side.
   function prBlocker(f) {
     if (!f.diagnosed) return "Needs a diagnosis first";
-    if (!(f.diff || []).length) return "No code change suggested";
+    if (!f.patch) return "No code change suggested";
     if (f.confidence !== "High") return "Only High-confidence fixes can open a PR";
+    if (f.patchError) return "Patch doesn't apply to the current code";
     if (!CFG || !CFG.prRepo) return "Set GITHUB_REPO on the agent to enable PRs";
     return null;
   }
