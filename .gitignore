@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Airflow local runtime (contains generated secrets / logs)
+config/
+logs/
+airflow.db
+simple_auth_manager_passwords.json.generated
