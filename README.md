@@ -75,8 +75,10 @@ python scripts/scenarios/reset.py     # restore the clean seed
 Then start the agent and open the dashboard:
 
 ```bash
-cd agent && uvicorn main:app --port 8787
-# dashboard: open ui/index.html
+pip install -r requirements.txt
+python -m agent.main                      # print today's failures + real errors
+uvicorn agent.main:app --port 8787        # or serve them as JSON at /failures
+# dashboard: coming soon (ui/index.html)
 ```
 
 ---
