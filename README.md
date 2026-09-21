@@ -8,6 +8,8 @@ Nothing merges without human approval.
 Ships with a local harness that generates realistic pipeline failures, so you
 can run the whole thing on your laptop without a cloud account.
 
+![Dashboard listing five failed Airflow tasks, each with its real exception, a failure type such as Schema drift or Duplicate source keys, and a confidence rating](docs/images/dashboard.webp)
+
 ---
 
 ## Why
@@ -46,6 +48,23 @@ approve." The judgment stays with the human — the clicking doesn't.
 | `table` | A table was renamed or dropped, or a grant is missing |
 | `gcs` | A file doesn't arrive, or an export writes to a bad path |
 | `auth` | Token-per-record inefficiency — slow rather than broken |
+
+---
+
+## From failure to pull request
+
+Click a failure and the agent shows its evidence and its reasoning: the task
+log, the root cause for engineers or analysts, what the failure affects, and
+what the diagnosis cost. Here the orders extract gained a column the warehouse
+table doesn't have. The fix is a new additive migration, and because it's High
+confidence, rooted in config, and applies cleanly, it can be raised as a PR.
+
+![Detail panel for orders_refresh: the diagnosis, its impact, token usage and cost, and a suggested migration that adds effective_ts to stg_orders, with PR #13 opened and awaiting review](docs/images/diagnosis-panel.webp)
+
+The PR explains itself to whoever reviews it, in both registers, and says
+plainly that nothing merges automatically.
+
+![The agent's pull request on GitHub, showing the error, the root cause at High confidence, and a plain-language explanation](docs/images/agent-pr.webp)
 
 ---
 
