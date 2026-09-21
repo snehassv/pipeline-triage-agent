@@ -101,6 +101,13 @@ data — duplicate keys in a feed, a file that never arrived, a data-quality che
 doing its job — the agent says what a person should do instead of proposing a
 patch that would hide it.
 
+That isn't left to the prompt alone. Every diagnosis must say where the root cause
+lives — `code`, `config`, `data` or `environment` — and the agent refuses a PR for
+anything but code or config, whatever the model's confidence. In an early run
+Claude rated a duplicate-key failure *High* confidence and proposed a patch that
+deduplicated the rows in SQL: the right diagnosis with the wrong remedy, since it
+would have hidden the bad feed. The structural rule is what stops that shipping.
+
 Open the dashboard through the agent rather than from disk: the agent injects
 the API token when it serves the page, so the HTML file itself holds no secret.
 
@@ -176,9 +183,13 @@ next to the suggested diff rather than being inferred after the fact.
     "analyst":  "Today's orders file has a new column the staging table isn't set up for ..."
   },
   "impact": "stg_orders is stale; downstream order reports show yesterday's data.",
+  "rootCause": "config",                       // code|config|data|environment — only code and
+                                               // config can ever become a PR
   "fixSummary": "Add effective_ts to stg_orders before the load runs.",
   "patch": "diff --git a/dags/dag_factory.py b/dags/dag_factory.py\n...",
   "patchError": null,                          // git's message if the patch doesn't apply
+  "patchWithheld": false,                      // true if a patch came back for a data or
+                                               // environment problem: shown, never raised
   "diff": [ { "t": "file|hunk|ctx|add|del", "s": "..." } ],   // the patch, for display
   "prTitle": "fix: add effective_ts to stg_orders",
   "prBranch": "agent/fix-orders-effective-ts",

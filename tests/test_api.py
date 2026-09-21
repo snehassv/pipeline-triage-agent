@@ -17,7 +17,7 @@ FAILED_TASK = {
 }
 DIAGNOSIS = {
     "type": "Schema drift", "cat": "schema", "confidence": "High",
-    "cause": {"engineer": "e", "analyst": "a"}, "impact": "i", "fixSummary": "f",
+    "cause": {"engineer": "e", "analyst": "a"}, "impact": "i", "rootCause": "code", "fixSummary": "f",
     "patch": "diff --git a/x b/x\n", "diff": [], "fixFile": "x",
     "prTitle": "fix: x", "prBranch": "agent/fix-x",
     "usage": {"model": "claude-sonnet-5", "input_tokens": 1, "output_tokens": 1,
@@ -121,6 +121,11 @@ def test_pr_for_unknown_failure_is_404(api):
 
 @pytest.mark.parametrize("override, reason", [
     ({"confidence": "Medium"}, "High-confidence"),
+    # The product_dim_upsert case from a real run: High confidence, a patch that
+    # applies, and a data problem. It must never become a PR.
+    ({"rootCause": "data", "patchWithheld": True}, "root cause is in the data"),
+    ({"rootCause": "environment"}, "root cause is in the environment"),
+    ({"rootCause": None}, "doesn't say where the root cause is"),
     ({"patch": ""}, "no code change"),
     ({"prBranch": "bad branch; rm -rf"}, "invalid branch"),
 ])
