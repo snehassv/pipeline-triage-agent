@@ -1,0 +1,27 @@
+"""
+Reset the harness to a clean state.
+
+Re-runs the seed, which drops and recreates every table and rewrites the CSV
+extracts. Undoes all scenarios in one go.
+
+Does NOT clear Airflow's task history — failed runs stay visible in the UI,
+which is usually what you want while testing the agent. Clear individual task
+instances in the UI if you need a fresh run.
+
+Run:
+    python -m scripts.scenarios.reset
+"""
+
+from scripts.seed_warehouse import main as seed
+
+
+def main():
+    print("resetting harness...")
+    seed()
+    print()
+    print("Clean state restored. Failed DAG runs remain in Airflow history —")
+    print("clear the task instance in the UI to re-run one.")
+
+
+if __name__ == "__main__":
+    main()
