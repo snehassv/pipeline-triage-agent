@@ -76,10 +76,18 @@ Then start the agent and open the dashboard:
 
 ```bash
 pip install -r requirements.txt
-python -m agent.main                      # print today's failures + real errors
-uvicorn agent.main:app --port 8787        # or serve them as JSON at /failures
-# dashboard: coming soon (ui/index.html)
+uvicorn agent.main:app --port 8787        # dashboard: http://localhost:8787
+python -m agent.main                      # or print today's failures in the terminal
 ```
+
+The dashboard lists every failed task in the chosen date range with its real
+exception. Click a row for the task log, the diagnosis (engineer or analyst
+view), and the suggested diff. **Raise PR** asks for confirmation and is only
+enabled for High-confidence fixes when `GITHUB_REPO` is set. Without
+`ANTHROPIC_API_KEY` you still get the failures and raw errors, just no diagnosis.
+
+Open the dashboard through the agent rather than from disk: the agent injects
+the API token when it serves the page, so the HTML file itself holds no secret.
 
 ---
 

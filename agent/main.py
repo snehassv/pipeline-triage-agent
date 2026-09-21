@@ -6,6 +6,7 @@ Reads failed task instances from a local Airflow 3 deployment over its REST API,
 pulls each failure's real task log and DAG source, and (when an Anthropic API key is
 set) asks Claude for a diagnosis and a suggested fix.
 
+    GET  /                                          -> the dashboard (ui/index.html)
     GET  /failures?start=YYYY-MM-DD&end=YYYY-MM-DD  -> failed tasks in the window, diagnosed
     POST /pull-requests                             -> opens a PR with the suggested fix
 
@@ -16,7 +17,7 @@ Pipeline, per request to GET /failures:
     4. diagnose       — Claude API; skipped (raw error shown instead) without ANTHROPIC_API_KEY
 
 Run it (from the repo root, with `docker compose up -d` already done):
-    uvicorn agent.main:app --port 8787
+    uvicorn agent.main:app --port 8787   # dashboard at http://localhost:8787
     python -m agent.main                 # or: print today's failures to the terminal, no server
 
 Configuration (environment variables, or the repo's .env file):
@@ -42,6 +43,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -51,6 +53,7 @@ import requests
 import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -218,25 +221,27 @@ def read_failed_tasks(lo: dt.datetime, hi: dt.datetime) -> list:
 # ----------------------------------------------------------------------------------
 # STEP 2 — the task's real log, reduced to the lines that explain the failure
 # ----------------------------------------------------------------------------------
-def read_task_log(f: dict) -> list:
+def read_task_log(f: dict) -> tuple:
+    """Return (log lines for the UI, one-line exception summary)."""
     path = (f"/api/v2/dags/{f['dag']}/dagRuns/{requests.utils.quote(f['run_id'], safe='')}"
             f"/taskInstances/{f['task']}/logs/{f['try_number']}")
     try:
         content = airflow.get(path, params={"full_content": "true"}).get("content", [])
     except KeyError:
-        return [{"sev": "warn", "t": "task log not found (it may have been cleaned up)"}]
+        return [{"sev": "warn", "t": "task log not found (it may have been cleaned up)"}], ""
     if isinstance(content, str):
         return _extract_from_text_log(content)
     return _extract_from_structured_log(content)
 
 
-def _extract_from_structured_log(events: list) -> list:
+def _extract_from_structured_log(events: list) -> tuple:
     """Airflow 3 task logs are a list of structlog events. The failure event carries an
     `error_detail` with the exception type, message and stack frames — that's the part
     worth showing. We also keep the couple of info lines right before the failure (e.g.
     the SQL statement that was running), since they're usually the missing context."""
     lines: list = []
     recent_info: list = []
+    error = ""
     for e in events:
         text = str(e.get("event", ""))
         level = e.get("level", "")
@@ -251,7 +256,9 @@ def _extract_from_structured_log(events: list) -> list:
             recent_info = []
         lines.append({"sev": "err" if level != "warning" else "warn", "t": text})
         for exc in e.get("error_detail") or []:
-            lines.append({"sev": "err", "t": f"{exc.get('exc_type')}: {exc.get('exc_value')}"})
+            summary = f"{exc.get('exc_type')}: {exc.get('exc_value')}"
+            error = summary.splitlines()[0]
+            lines.append({"sev": "err", "t": summary})
             frames = exc.get("frames") or []
             # Frames from the DAG code are the ones a fix would touch; fall back to the
             # innermost frames when the error is raised entirely inside libraries.
@@ -261,16 +268,19 @@ def _extract_from_structured_log(events: list) -> list:
                               "t": f"  at {fr.get('filename')}:{fr.get('lineno')} in {fr.get('name')}"})
     if not lines:
         lines = [{"sev": "warn", "t": "no error-level lines in the task log"}]
-    return [{"sev": l["sev"], "t": l["t"][:400]} for l in lines[-MAX_LOG_LINES:]]
+    return [{"sev": l["sev"], "t": l["t"][:400]} for l in lines[-MAX_LOG_LINES:]], error[:200]
 
 
-def _extract_from_text_log(text: str) -> list:
+def _extract_from_text_log(text: str) -> tuple:
     """Fallback for plain-text logs (older Airflow / other log handlers)."""
     raw = text.splitlines()
     start = next((i for i, l in enumerate(raw) if "Traceback" in l or " ERROR " in l), None)
     picked = raw[start:] if start is not None else raw[-MAX_LOG_LINES:]
-    return [{"sev": "err" if ("ERROR" in l or "Error" in l) else "warn", "t": l[:400]}
-            for l in picked[-MAX_LOG_LINES:] if l.strip()]
+    lines = [{"sev": "err" if ("ERROR" in l or "Error" in l) else "warn", "t": l[:400]}
+             for l in picked[-MAX_LOG_LINES:] if l.strip()]
+    # The exception line of a Python traceback looks like "SomeError: message".
+    exc = [l for l in raw if re.match(r"^[A-Za-z_][\w.]*: ", l)]
+    return lines, (exc[-1] if exc else "")[:200]
 
 
 # ----------------------------------------------------------------------------------
@@ -359,29 +369,51 @@ def _undiagnosed(failure: dict, fix_file: str, reason: str) -> dict:
         "type": "Unclassified", "cat": "", "confidence": "Low",
         "cause": {"engineer": errors[-1] if errors else "see log", "analyst": reason},
         "impact": "", "fixSummary": "", "fixFile": fix_file, "diff": [],
-        "prTitle": "", "prBranch": "",
+        "prTitle": "", "prBranch": "", "diagnosed": False,
     }
 
 
 # ----------------------------------------------------------------------------------
 # Orchestration
 # ----------------------------------------------------------------------------------
+# A failed task attempt is finished: its log won't change, so neither will its diagnosis.
+# Caching per (dag, task, run, try) means the dashboard's 30s poll only does real work —
+# including the Claude call — when a *new* failure appears. The lock stops two
+# overlapping polls from diagnosing the same failure twice.
+_cache: dict = {}
+_cache_lock = threading.Lock()
+_CACHE_MAX = 500
+
+
 def collect_failures(lo: dt.datetime, hi: dt.datetime) -> list:
-    out = []
-    for f in read_failed_tasks(lo, hi):
-        f["log"] = read_task_log(f)
+    with _cache_lock:
+        return [_enrich(f) for f in read_failed_tasks(lo, hi)]
+
+
+def _enrich(f: dict) -> dict:
+    key = (f["dag"], f["task"], f["run_id"], f["try_number"])
+    entry = _cache.get(key)
+    if entry is None:
+        if len(_cache) >= _CACHE_MAX:
+            _cache.clear()
+        log, error = read_task_log(f)
         path, src = read_dag_source(f["dag"])
+        entry = _cache[key] = {"log": log, "error": error, "path": path, "src": src, "diag": None}
+    f = {**f, "log": entry["log"], "error": entry["error"]}
+
+    diag = entry["diag"]
+    if diag is None:
         if not os.environ.get("ANTHROPIC_API_KEY"):
-            diag = _undiagnosed(f, path, "Automatic diagnosis is off — set ANTHROPIC_API_KEY to enable it.")
+            diag = _undiagnosed(f, entry["path"], "Automatic diagnosis is off — set ANTHROPIC_API_KEY to enable it.")
         else:
             try:
-                diag = diagnose(f, path, src)
+                # Only a successful diagnosis is cached; failures retry on the next poll.
+                diag = entry["diag"] = {**diagnose(f, entry["path"], entry["src"]), "diagnosed": True}
             except Exception as e:
-                diag = _undiagnosed(f, path, f"Could not auto-diagnose: {e}")
-        # Identify a failure by what it *is*, not its position in the list — the UI
-        # polls, and a positional id would make an open panel jump to another DAG.
-        out.append({"id": f"{f['dag']}::{f['task']}", **f, **diag})
-    return out
+                diag = _undiagnosed(f, entry["path"], f"Could not auto-diagnose: {e}")
+    # Identify a failure by what it *is*, not its position in the list — the UI
+    # polls, and a positional id would make an open panel jump to another DAG.
+    return {"id": f"{f['dag']}::{f['task']}", **f, **diag}
 
 
 def _resolve_window(start: Optional[str], end: Optional[str]):
@@ -419,6 +451,38 @@ def _fmt_duration(seconds: Optional[float]) -> str:
         return ""
     m, s = divmod(int(round(seconds)), 60)
     return f"ran {m}m {s}s" if m else f"ran {s}s"
+
+
+# ----------------------------------------------------------------------------------
+# Dashboard — served from this app so its API calls are same-origin
+# ----------------------------------------------------------------------------------
+UI_FILE = REPO_ROOT / "ui" / "index.html"
+_CONFIG_MARKER = "<!-- agent-config -->"
+
+
+@app.get("/", response_class=HTMLResponse)
+def dashboard():
+    """Serve ui/index.html with the token injected. Keeping the token out of the file means
+    a copy on disk carries no secret. This route is unauthenticated by necessity (a
+    browser can't attach a header to an address-bar visit); the CORS allow-list is what
+    stops a page on another origin from reading the token out of the response."""
+    html = UI_FILE.read_text(encoding="utf-8")
+    if _CONFIG_MARKER not in html:
+        raise HTTPException(status_code=500, detail=f"{UI_FILE.name} is missing {_CONFIG_MARKER}")
+    config = {
+        "token": AGENT_TOKEN,
+        "airflowUrl": AIRFLOW_URL,
+        "env": ENV_NAME,
+        "timezone": str(LOCAL_TZ),
+        "prRepo": GITHUB_REPO,
+        "maxRangeDays": MAX_RANGE_DAYS,
+    }
+    # json.dumps doesn't escape "</", which would let a value close the <script> early.
+    payload = json.dumps(config).replace("</", "<\\/")
+    return HTMLResponse(
+        html.replace(_CONFIG_MARKER, f"<script>window.__AGENT_CONFIG = {payload};</script>", 1),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # ----------------------------------------------------------------------------------
