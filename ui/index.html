@@ -182,6 +182,9 @@
   .conf-High   { background: var(--ok-bg); color: var(--ok); }
   .conf-Medium { background: var(--warn-bg); color: var(--warn); }
   .conf-Low    { background: var(--err-bg); color: var(--err); }
+  .badge.pending { background: var(--row-active); color: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .badge.pending { animation: none; } }
 
   /* ---------- detail panel ---------- */
   .panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; }
@@ -298,7 +301,7 @@
     <div class="stat"><div class="v" id="s-tasks">–</div><div class="l">Failing tasks</div></div>
     <div class="stat"><div class="v" id="s-runs">–</div><div class="l">Failed runs</div></div>
     <div class="stat"><div class="v" id="s-dags">–</div><div class="l">DAGs affected</div></div>
-    <div class="stat"><div class="v" id="s-diag">–</div><div class="l">Diagnosed</div></div>
+    <div class="stat"><div class="v" id="s-diag">–</div><div class="l" id="s-diag-l">Diagnosed</div></div>
   </div>
 
   <div id="layout" class="layout">
@@ -333,6 +336,8 @@
   // leaves it undefined, and the page says so instead of silently failing.
   const CFG = window.__AGENT_CONFIG || null;
   const POLL_MS = 30000;
+  const PENDING_POLL_MS = 3000;   // while diagnoses are running in the background
+  let pendingTimer = null;
   const CATEGORIES = {
     schema: "Schema", merge: "Merge", dq: "Data quality", sensor: "Sensor",
     table: "Table", gcs: "File / export", auth: "Auth",
@@ -394,6 +399,8 @@
       state.loading = false;
       $("refresh").disabled = false;
       render();
+      clearTimeout(pendingTimer);
+      if (state.failures.some((f) => f.diagnosing)) pendingTimer = setTimeout(load, PENDING_POLL_MS);
     }
   }
 
@@ -455,6 +462,8 @@
     $("s-runs").textContent = fs.reduce((n, f) => n + (f.occurrences || 1), 0);
     $("s-dags").textContent = new Set(fs.map((f) => f.dag)).size;
     $("s-diag").textContent = fs.length ? `${fs.filter((f) => f.diagnosed).length} / ${fs.length}` : "–";
+    const running = fs.filter((f) => f.diagnosing).length;
+    $("s-diag-l").textContent = running ? `Diagnosed · ${running} in progress` : "Diagnosed";
   }
 
   function renderCategoryOptions() {
@@ -471,7 +480,7 @@
       <tr data-id="${esc(f.id)}" tabindex="0" class="${f.id === state.selectedId ? "active" : ""}">
         <td><div class="dag">${esc(f.dag)}</div><div class="task">${esc(f.task)}</div></td>
         <td><div class="err-cell" title="${esc(f.error)}">${esc(f.error || f.type || "—")}</div></td>
-        <td class="col-cat">${catBadge(f.cat)}</td>
+        <td class="col-cat">${f.diagnosing ? `<span class="badge pending">Diagnosing…</span>` : catBadge(f.cat)}</td>
         <td class="col-when when">${esc(whenText(f))}</td>
         <td class="col-runs num">${esc(f.occurrences || 1)}</td>
       </tr>`).join("");
@@ -516,7 +525,7 @@
       <p class="cause">${esc(cause)}</p>
       ${f.impact ? `<p class="impact">${esc(f.impact)}</p>` : ""}
       ${usageLine(f.usage)}` : `
-      <div class="notice">${esc((f.cause || {}).analyst || "Not diagnosed.")}
+      <div class="notice">${f.diagnosing ? `<span class="badge pending">Diagnosing…</span> ` : ""}${esc((f.cause || {}).analyst || "Not diagnosed.")}
         ${f.error ? `<span class="mono">${esc(f.error)}</span>` : ""}
       </div>`;
 
@@ -582,6 +591,7 @@
   // Why the PR button is disabled, or null when it can be used. Mirrors pr_blocker() in
   // agent/main.py, which enforces the same rules server-side.
   function prBlocker(f) {
+    if (f.diagnosing) return "Diagnosis in progress";
     if (!f.diagnosed) return "Needs a diagnosis first";
     if (!f.patch) return "No code change suggested";
     if (f.confidence !== "High") return "Only High-confidence fixes can open a PR";

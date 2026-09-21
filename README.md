@@ -146,6 +146,9 @@ Per failure, the agent (`agent/main.py`):
 
 A failed attempt never changes, so all of this is cached per attempt: the
 dashboard polls every 30 seconds, but Claude is only called once per new failure.
+A diagnosis takes 10–25 seconds, so it never blocks a request — `/failures`
+returns the list at once with `"diagnosing": true`, up to four diagnoses run in
+parallel in the background, and the dashboard polls every 3 seconds until they land.
 
 The agent returns one object per failure. The two things worth noting in the
 shape: `cause` carries both registers as sibling fields, and `confidence` sits
@@ -164,6 +167,7 @@ next to the suggested diff rather than being inferred after the fact.
   "log": [ { "sev": "err", "t": "Task failed with exception" }, ... ],
 
   "diagnosed": true,
+  "diagnosing": false,                         // true while Claude is still working on it
   "type": "Schema drift",
   "cat": "schema",                             // schema|merge|dq|sensor|table|gcs|auth
   "confidence": "High",                        // High|Medium|Low
