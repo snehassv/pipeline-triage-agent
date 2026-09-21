@@ -155,7 +155,8 @@ def build_dag(cfg: dict) -> DAG:
         if cfg["category"] == "sensor":
             upstream = FileSensor(
                 task_id="wait_for_upstream_file",
-                filepath=str(DATA_DIR / cfg["source_file"]),
+                fs_conn_id="harness_data",       # base path /opt/airflow/data, see docker-compose.yaml
+                filepath=cfg["source_file"],
                 poke_interval=10,
                 timeout=cfg.get("timeout_seconds", 60),
                 mode="reschedule",

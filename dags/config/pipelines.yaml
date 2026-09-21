@@ -1,0 +1,86 @@
+# Each entry generates one DAG. Add entries to scale up — 8 templates, N DAGs.
+# Vary `schedule` so failures land at different times and your dashboard has
+# something realistic to sort and filter.
+
+pipelines:
+  # --- schema drift -------------------------------------------------------
+  - dag_id: orders_refresh
+    category: schema
+    domain: sales
+    description: Load daily orders extract into the warehouse
+    schedule: "0 2 * * *"
+    source_file: extracts/orders_20260921.csv
+    target_table: stg_orders
+
+  - dag_id: customers_refresh
+    category: schema
+    domain: crm
+    schedule: "15 2 * * *"
+    source_file: extracts/customers_20260921.csv
+    target_table: stg_customers
+
+  # --- merge / duplicate key ---------------------------------------------
+  - dag_id: product_dim_upsert
+    category: merge
+    domain: masterdata
+    schedule: "0 3 * * *"
+    source_table: stg_products
+    target_table: dim_product
+    columns: product_id, product_name, category, updated_at
+    key: product_id
+
+  - dag_id: store_dim_upsert
+    category: merge
+    domain: masterdata
+    schedule: "20 3 * * *"
+    source_table: stg_stores
+    target_table: dim_store
+    columns: store_id, store_name, region, updated_at
+    key: store_id
+
+  # --- data quality thresholds -------------------------------------------
+  - dag_id: product_deactivation_check
+    category: dq
+    domain: masterdata
+    schedule: "0 4 * * *"
+    target_table: dim_product
+    predicate: "status = 'INACTIVE' AND updated_at::date = CURRENT_DATE"
+    threshold: 500
+
+  - dag_id: order_null_check
+    category: dq
+    domain: sales
+    schedule: "10 4 * * *"
+    target_table: stg_orders
+    predicate: "customer_id IS NULL"
+    threshold: 0
+
+  # --- sensor timeout -----------------------------------------------------
+  - dag_id: vendor_feed_ingest
+    category: sensor
+    domain: supply
+    schedule: "0 1 * * *"
+    source_file: landing/vendor_feed.csv   # never lands — sensor times out
+    timeout_seconds: 60
+
+  # --- missing table / permissions ---------------------------------------
+  - dag_id: legacy_hierarchy_load
+    category: table
+    domain: masterdata
+    schedule: "30 2 * * *"
+    target_table: dim_hierarchy_v1        # dropped by a scenario script
+
+  # --- export failure -----------------------------------------------------
+  - dag_id: daily_sales_export
+    category: gcs
+    domain: sales
+    schedule: "0 5 * * *"
+    source_table: fct_sales
+    export_path: exports/missing_dir/sales.csv   # parent dir doesn't exist
+
+  # --- auth inefficiency (slow, not failing) ------------------------------
+  - dag_id: ticket_sync
+    category: auth
+    domain: itsm
+    schedule: "*/30 * * * *"
+    api_base: http://mock-api:9000

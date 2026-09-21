@@ -66,6 +66,9 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
+    # Filesystem connection for FileSensor. The built-in fs_default has no base path,
+    # which makes FileSensor crash with a TypeError instead of timing out.
+    AIRFLOW_CONN_HARNESS_DATA: '{"conn_type": "fs", "extra": {"path": "/opt/airflow/data"}}'
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
