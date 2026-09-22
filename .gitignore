@@ -227,3 +227,6 @@ data/*
 
 # Agent: local settings and the per-diagnosis usage log
 agent/usage.jsonl
+
+# macOS
+.DS_Store

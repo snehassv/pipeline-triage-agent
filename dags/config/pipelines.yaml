@@ -78,9 +78,29 @@ pipelines:
     source_table: fct_sales
     export_path: exports/missing_dir/sales.csv   # parent dir doesn't exist
 
-  # --- auth inefficiency (slow, not failing) ------------------------------
+  # --- third-party API extracts -------------------------------------------
+  # Every entry repeats api_base, the way real configs do. When the API moves,
+  # they all fail at once — and the tempting fix is to edit each line.
   - dag_id: ticket_sync
     category: auth
     domain: itsm
     schedule: "*/30 * * * *"
+    api_base: http://mock-api:9000
+
+  - dag_id: vendor_contact_sync
+    category: api
+    domain: supply
+    schedule: "10 6 * * *"
+    api_base: http://mock-api:9000
+
+  - dag_id: pricing_api_pull
+    category: api
+    domain: sales
+    schedule: "20 6 * * *"
+    api_base: http://mock-api:9000
+
+  - dag_id: inventory_api_pull
+    category: api
+    domain: supply
+    schedule: "30 6 * * *"
     api_base: http://mock-api:9000
