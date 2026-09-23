@@ -108,22 +108,29 @@ def _task_file_export(cfg):
     return run
 
 
-def _task_auth_inefficiency(cfg):
+def _task_api_extract(cfg):
     """
-    Auth inefficiency: request a fresh token per record against the mock API.
-    Doesn't fail — it just burns tokens and time, which is the point. The mock
-    service logs every token request so the pattern is visible in the logs.
+    Extract records from a third-party API, one request per record, with a fresh
+    token each time. On a good day it only burns tokens and time. When the API is
+    throttled or has moved, the task fails on whatever the API returns — and this
+    code gives no clue which happened, which is the point: the cause lives in a
+    system the agent can't read (services/mock_api is never sent to it).
     """
     def run(**_):
         import requests
         base = cfg.get("api_base", "http://mock-api:9000")
-        ids = requests.get(f"{base}/records").json()["ids"]
-        for rid in ids:
-            token = requests.post(f"{base}/token").json()["token"]
-            requests.get(
+        listing = requests.get(f"{base}/records", timeout=30)
+        listing.raise_for_status()
+        for rid in listing.json()["ids"]:
+            token_response = requests.post(f"{base}/token", timeout=30)
+            token_response.raise_for_status()
+            token = token_response.json()["token"]
+            record = requests.get(
                 f"{base}/records/{rid}",
                 headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
             )
+            record.raise_for_status()
     return run
 
 
@@ -133,7 +140,8 @@ BUILDERS = {
     "dq": _task_dq,
     "table": _task_missing_table,
     "gcs": _task_file_export,     # keeping your category name; it's local FS here
-    "auth": _task_auth_inefficiency,
+    "auth": _task_api_extract,
+    "api": _task_api_extract,
 }
 
 

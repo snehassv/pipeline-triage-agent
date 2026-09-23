@@ -88,6 +88,8 @@ demand:
 ```bash
 python -m scripts.scenarios.inject_duplicate_product_keys
 python -m scripts.scenarios.add_column_to_orders_extract
+python -m scripts.scenarios.throttle_vendor_api    # the API starts rate-limiting
+python -m scripts.scenarios.move_api_endpoint     # the API moves under /v2
 python -m scripts.scenarios.reset     # restore the clean seed
 ```
 
@@ -142,6 +144,22 @@ tracebacks would prove nothing about whether the diagnosis works.
 DAGs are generated from config rather than hand-written — eight templates in
 `dags/dag_factory.py`, and as many DAGs as you list in
 `dags/config/pipelines.yaml`. Add entries to scale up.
+
+### The system the agent can't see
+
+One service in the harness is deliberately opaque. `services/mock_api` stands in for a
+third-party API a pipeline depends on, and **its source is never sent to the model** —
+the agent gets the DAG that calls it and the task log, exactly as you would for a vendor
+system whose code you can't read. A test (`tests/test_mock_api.py`) enforces that.
+
+Two scenarios use it, and both ask a question worth knowing the answer to:
+
+- **`throttle_vendor_api`** — the API starts returning `429` after a handful of requests
+  a minute. Nothing in the repository changed, and nothing in the repository fixes it.
+  Can the agent tell a pipeline bug from someone else's system misbehaving?
+- **`move_api_endpoint`** — the API moves under `/v2` and every DAG that calls it fails
+  at once, because each one carries its own copy of `api_base` in `pipelines.yaml`. Does
+  the agent reach for the tedious fix (edit every entry) or say the contract changed?
 
 ### Schema migrations
 
