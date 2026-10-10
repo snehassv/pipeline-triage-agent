@@ -128,19 +128,24 @@ Failed runs in this window: {failure.get('occurrences', 1)}{next_migration}
 {chr(10).join(sources)}"""
 
 
-def diagnose(failure: dict, files: dict, client=None) -> dict:
-    """Return the diagnosis fields for a failure record, plus `usage`. Raises DiagnosisError."""
+def diagnose(failure: dict, files: dict, client=None, model: Optional[str] = None,
+             system: Optional[str] = None, schema: Optional[dict] = None) -> dict:
+    """Return the diagnosis fields for a failure record, plus `usage`. Raises DiagnosisError.
+
+    model/system/schema default to this module's; the evaluation in eval/ overrides them
+    to compare models and to re-run the pre-root-cause-rule prompt."""
     import anthropic
     client = client or anthropic.Anthropic()  # credentials from ANTHROPIC_API_KEY
+    model = model or MODEL
 
     started = time.monotonic()
     try:
         response = client.messages.create(
-            model=MODEL,
+            model=model,
             max_tokens=16000,
-            system=SYSTEM,
+            system=system or SYSTEM,
             messages=[{"role": "user", "content": build_prompt(failure, files)}],
-            output_config={"format": {"type": "json_schema", "schema": FIX_SCHEMA}},
+            output_config={"format": {"type": "json_schema", "schema": schema or FIX_SCHEMA}},
         )
     except anthropic.AuthenticationError:
         raise DiagnosisError("Anthropic rejected the API key — check ANTHROPIC_API_KEY in agent/.env.")
@@ -150,7 +155,7 @@ def diagnose(failure: dict, files: dict, client=None) -> dict:
         raise DiagnosisError(f"Anthropic API error {e.status_code}: {e.message}")
     except anthropic.APIConnectionError:
         raise DiagnosisError("Couldn't reach the Anthropic API.")
-    seconds = time.monotonic() - started
+    seconds = time.monotonic() - started  # noqa: E501
 
     if response.stop_reason == "refusal":
         raise DiagnosisError("The model declined to diagnose this failure.")
