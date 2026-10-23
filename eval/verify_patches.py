@@ -26,6 +26,7 @@ import time
 from agent.main import REPO_ROOT
 from eval import harness
 from eval.scenarios import BY_ID
+from scripts.ddl_policy import _file_blocks
 
 CHECKS = harness.RESULTS / "patch_checks.jsonl"
 RUNS = harness.RESULTS / "runs.jsonl"
@@ -106,8 +107,21 @@ def verify(row: dict) -> dict:
             time.sleep(5)
         return {**record, "applied": True, "fixed": False, "detail": "no terminal state in time"}
     finally:
-        git("checkout", "--", ".")
-        git("clean", "-fd", "sql/migrations", "dags")
+        revert(row["patch"])
+
+
+def revert(patch: str) -> None:
+    """Undo exactly the files this patch touched.
+
+    Not `git checkout -- .`: that reverts every tracked file, which quietly threw away
+    this script's own results once they were committed."""
+    for block in _file_blocks(patch):
+        path = block["path"]
+        tracked = git("cat-file", "-e", f"HEAD:{path}").returncode == 0
+        if tracked:
+            git("checkout", "--", path)
+        else:
+            (REPO_ROOT / path).unlink(missing_ok=True)
 
 
 def succeeded(scenario, after: dt.datetime) -> bool:

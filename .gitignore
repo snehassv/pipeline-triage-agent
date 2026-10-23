@@ -234,3 +234,5 @@ agent/usage.jsonl
 # Evaluation outputs (regenerate with python -m eval.run_eval)
 eval/results/runs.jsonl
 eval/results/failures/
+eval/results/patch_checks.jsonl
+eval/results/tables/
