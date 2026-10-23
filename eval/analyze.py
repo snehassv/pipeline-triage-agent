@@ -19,6 +19,7 @@ from eval.harness import RESULTS
 from eval.scenarios import SCENARIOS, BY_ID
 
 RUNS = RESULTS / "runs.jsonl"
+CHECKS = RESULTS / "patch_checks.jsonl"
 Z = 1.96
 
 
@@ -165,6 +166,44 @@ def cost(rows: list) -> str:
                  ["Model", "n", "Avg tokens in / out", "Avg cost", "Total", "Avg time"], body)
 
 
+def efficacy() -> str:
+    """Did the patch make the DAG pass — and should it have?
+
+    For a failure a repository change can fix, a passing task is the fix working. For a
+    failure rooted in the data or the environment, a passing task means the patch hid
+    the problem: the run goes green and the bad feed, or the missing table, is still
+    there. Both are reported, because the second is the one that matters.
+    """
+    if not CHECKS.exists():
+        return "### Patch verification\n\n_not run yet_\n"
+    checks = [json.loads(l) for l in CHECKS.read_text().splitlines() if l.strip()]
+    body = []
+    for scenario in SCENARIOS:
+        group = [c for c in checks if c["scenario"] == scenario.id]
+        if not group:
+            continue
+        fixed = sum(1 for c in group if c["fixed"])
+        body.append([
+            scenario.id, scenario.root_cause,
+            "a repo change can fix it" if scenario.fix_in_repo else "no repo change can fix it",
+            len(group), pct(fixed, len(group)),
+            "genuine fix" if scenario.fix_in_repo and fixed else
+            "**masked the problem**" if fixed else "no effect",
+        ])
+    out = table("Patch verification: applied, re-run, and the task's outcome",
+                ["Scenario", "Root cause", "Ground truth", "Patches verified",
+                 "DAG then passed", "Meaning"], body)
+
+    fixable = [c for c in checks if c["truth_fix_in_repo"]]
+    not_fixable = [c for c in checks if not c["truth_fix_in_repo"]]
+    out += (f"\nAcross {len(checks)} distinct patches: "
+            f"{pct(sum(1 for c in fixable if c['fixed']), len(fixable))} of patches for failures a "
+            f"repository change can fix made the task pass, and "
+            f"{pct(sum(1 for c in not_fixable if c['fixed']), len(not_fixable))} of patches for "
+            f"failures it cannot fix *also* made the task pass — by hiding the cause.\n")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     ap.add_argument("--csv", type=Path, help="also write each table as CSV into this directory")
@@ -176,7 +215,8 @@ def main() -> int:
           f"{len({r['model'] for r in rows})} models\n")
     sections = {
         "headline": headline(rows), "accuracy": accuracy(rows), "per_scenario": per_scenario(rows),
-        "stability": stability(rows), "calibration": calibration(rows), "cost": cost(rows),
+        "stability": stability(rows), "calibration": calibration(rows),
+        "efficacy": efficacy(), "cost": cost(rows),
     }
     for section in sections.values():
         print(section)
