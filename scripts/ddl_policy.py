@@ -31,20 +31,96 @@ def strip_comments(sql: str) -> str:
     return re.sub(r"--[^\n]*", " ", sql)
 
 
+def split_statements(sql: str) -> list:
+    """Split on semicolons that actually end a statement.
+
+    A plain `sql.split(";")` tears `COMMENT ON TABLE t IS 'recreated; reload it'` in two
+    and then reads the tail as an illegal statement — a real migration the models wrote
+    was rejected that way. Single-quoted strings ('' escapes) and $$ blocks are skipped.
+    """
+    statements, current, quote, dollar = [], [], False, False
+    i = 0
+    while i < len(sql):
+        char = sql[i]
+        if dollar:
+            if sql.startswith("$$", i):
+                dollar, i = False, i + 2
+                current.append("$$")
+                continue
+        elif quote:
+            if char == "'":
+                if sql.startswith("''", i):     # an escaped quote, still inside the string
+                    current.append("''")
+                    i += 2
+                    continue
+                quote = False
+        elif sql.startswith("$$", i):
+            dollar, i = True, i + 2
+            current.append("$$")
+            continue
+        elif char == "'":
+            quote = True
+        elif char == ";":
+            statements.append("".join(current))
+            current = []
+            i += 1
+            continue
+        current.append(char)
+        i += 1
+    statements.append("".join(current))
+    return [s.strip() for s in statements if s.strip()]
+
+
+def strip_strings(sql: str) -> str:
+    """Blank out string literals, so a DROP *described* in a COMMENT isn't read as a
+    DROP being performed. Keyword checks run on this; previews use the original."""
+    out, quote, dollar = [], False, False
+    i = 0
+    while i < len(sql):
+        if dollar:
+            if sql.startswith("$$", i):
+                dollar, i = False, i + 2
+                continue
+        elif quote:
+            if sql.startswith("''", i):
+                i += 2
+                continue
+            if sql[i] == "'":
+                quote = False
+                out.append("'")
+                i += 1
+                continue
+        elif sql.startswith("$$", i):
+            dollar, i = True, i + 2
+            continue
+        elif sql[i] == "'":
+            quote = True
+            out.append("'")
+            i += 1
+            continue
+        if not (quote or dollar):
+            out.append(sql[i])
+        i += 1
+    return "".join(out)
+
+
 def check_sql(sql: str) -> Optional[str]:
     """None if every statement is additive DDL, else why not."""
-    statements = [s.strip() for s in strip_comments(sql).split(";") if s.strip()]
+    statements = split_statements(strip_comments(sql))
     if not statements:
         return "the migration has no statements"
     for stmt in statements:
-        first = stmt.split(None, 1)[0].upper()
+        bare = strip_strings(stmt)          # what the statement *does*, minus its prose
+        if not bare.strip():
+            return f"statement has no SQL: {' '.join(stmt.split())[:80]}"
+        first = bare.split(None, 1)[0].upper()
         preview = " ".join(stmt.split())[:80]
         if first not in ALLOWED_STARTS:
             return f"only CREATE, ALTER and COMMENT are allowed, found {first}: {preview}"
         for word in FORBIDDEN_WORDS:
-            if re.search(rf"\b{word}\b", stmt, re.IGNORECASE):
+            if re.search(rf"\b{word}\b", bare, re.IGNORECASE):
                 return f"{word} isn't allowed in a migration: {preview}"
-        if CREATE_TABLE_AS.search(stmt):
+        if CREATE_TABLE_AS.search(bare):
             return f"CREATE TABLE ... AS copies data, which isn't allowed: {preview}"
     return None
 

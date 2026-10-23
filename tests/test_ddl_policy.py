@@ -230,3 +230,40 @@ def test_multi_file_patches_check_every_file():
 def test_unreadable_patches_are_refused():
     assert "couldn't tell which files" in ddl_policy.check_patch("@@ -0,0 +1 @@\n+DELETE FROM t;\n")
     assert ddl_policy.check_patch("") is None
+
+
+# A real migration from the study: a semicolon inside the COMMENT string used to split
+# the statement in two, and the tail was rejected as an illegal statement.
+COMMENT_WITH_SEMICOLON = """CREATE TABLE dim_hierarchy_v1 (
+    node_id     INT PRIMARY KEY,
+    parent_id   INT,
+    node_name   TEXT,
+    level_depth INT
+);
+COMMENT ON TABLE dim_hierarchy_v1 IS 'Re-created by migration 0003 after an out-of-band DROP; contents must be reloaded';
+"""
+
+
+def test_semicolons_inside_strings_do_not_split_statements():
+    assert len(ddl_policy.split_statements(COMMENT_WITH_SEMICOLON)) == 2
+    assert ddl_policy.check_sql(COMMENT_WITH_SEMICOLON) is None
+
+
+def test_escaped_quotes_and_dollar_quoting():
+    assert ddl_policy.check_sql(
+        "COMMENT ON TABLE t IS 'it''s fine; really'") is None
+    assert len(ddl_policy.split_statements("CREATE TABLE a (i INT); CREATE TABLE b (i INT)")) == 2
+    # Still catches the real thing when it hides after a string.
+    assert "found DELETE" in ddl_policy.check_sql(
+        "COMMENT ON TABLE t IS 'hi; there'; DELETE FROM t")
+
+
+def test_keywords_inside_strings_are_prose_not_sql():
+    """A migration may describe a DROP that happened elsewhere without performing one."""
+    assert ddl_policy.check_sql(
+        "COMMENT ON TABLE t IS 'recreated after an out-of-band DROP'") is None
+    assert ddl_policy.check_sql(
+        "ALTER TABLE t ADD COLUMN c INT; COMMENT ON COLUMN t.c IS 'do not TRUNCATE'") is None
+    # The real statement is still caught when it follows the prose.
+    assert "found DROP" in ddl_policy.check_sql(
+        "COMMENT ON TABLE t IS 'see DROP'; DROP TABLE t")
