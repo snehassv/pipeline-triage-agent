@@ -123,11 +123,23 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int, help="verify at most this many patches")
+    ap.add_argument("--per-group", type=int,
+                    help="verify at most this many distinct patches per scenario+condition; "
+                         "each takes ~2.5 minutes, so the full set is hours")
     args = ap.parse_args()
 
     todo = candidates()
     done = {r["patch_id"] for r in load_rows(CHECKS)}
     todo = {pid: row for pid, row in todo.items() if pid not in done}
+    if args.per_group:
+        kept, seen = {}, {}
+        for pid in sorted(todo):                      # deterministic sample
+            row = todo[pid]
+            key = (row["scenario"], row["condition"])
+            if seen.get(key, 0) < args.per_group:
+                seen[key] = seen.get(key, 0) + 1
+                kept[pid] = row
+        todo = kept
     if args.limit:
         todo = dict(list(todo.items())[:args.limit])
 
