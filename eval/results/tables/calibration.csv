@@ -1,0 +1,4 @@
+Confidence,n,Root cause correct (gated),Patches on failures a repo change can fix
+High,371,"157/187 (84%, CI 78%–89%)","113/159 (71%, CI 64%–78%)"
+Medium,108,"40/53 (75%, CI 62%–85%)","1/27 (4%, CI 1%–18%)"
+Low,1,—,—

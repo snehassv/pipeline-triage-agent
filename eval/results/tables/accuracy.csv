@@ -1,0 +1,4 @@
+Model,n,Exact label,Fixable-in-repo correct
+claude-haiku-4-5,80,"68/80 (85%, CI 76%–91%)","71/80 (89%, CI 80%–94%)"
+claude-opus-5,80,"61/80 (76%, CI 66%–84%)","71/80 (89%, CI 80%–94%)"
+claude-sonnet-5,80,"68/80 (85%, CI 76%–91%)","73/80 (91%, CI 83%–96%)"
