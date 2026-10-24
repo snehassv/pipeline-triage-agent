@@ -319,13 +319,16 @@ same risk category. This is the second kind.
 
 Each release is archived on Zenodo with the evaluation data it produced.
 
-- **Concept DOI** (always the newest release): [10.5281/zenodo.23621806](https://doi.org/10.5281/zenodo.23621806)
-- **First archived release** (v1.0.0, code only): [10.5281/zenodo.23621807](https://doi.org/10.5281/zenodo.23621807)
+- **Cite this for the reported results** — v1.0.1, the first release whose
+  archive includes the evaluation data: [10.5281/zenodo.23623233](https://doi.org/10.5281/zenodo.23623233)
+- **Concept DOI**, which always resolves to the newest release: [10.5281/zenodo.23621806](https://doi.org/10.5281/zenodo.23621806)
+- v1.0.0, the first archived release, holds the code and the summary tables but
+  not the per-diagnosis data: [10.5281/zenodo.23621807](https://doi.org/10.5281/zenodo.23621807)
 
-Each release also gets its own version DOI; cite that one when you need to point
-at the exact code and data a result came from.
+Prefer a version DOI over the concept DOI in a paper: it pins the exact code and
+data a result came from, which the concept DOI by design does not.
 
-> Sriram, S. (2026). *Pipeline Triage Agent* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23621806
+> Sriram, S. (2026). *Pipeline Triage Agent* (v1.0.1) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23623233
 
 Two files keep that metadata honest, and they have to agree with each other:
 `.zenodo.json` is what Zenodo reads when it archives a release (it replaces
