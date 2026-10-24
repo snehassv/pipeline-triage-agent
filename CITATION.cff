@@ -11,8 +11,9 @@ abstract: >-
 type: software
 authors:
   - family-names: Sriram
-    given-names: Sneha
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    given-names: Snehavarsha
+    alias: Sneha Sriram
+    orcid: "https://orcid.org/0009-0005-2281-4712"
 license: MIT
 repository-code: "https://github.com/snehassv/pipeline-triage-agent"
 doi: 10.5281/zenodo.23621806
