@@ -1,0 +1,4 @@
+Model,Scenarios,Mean agreement with modal label,Unanimous
+claude-haiku-4-5,8,94%,6
+claude-opus-5,8,99%,7
+claude-sonnet-5,8,89%,6

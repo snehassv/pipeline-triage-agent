@@ -230,3 +230,7 @@ agent/usage.jsonl
 
 # macOS
 .DS_Store
+
+# Evaluation outputs (regenerate with python -m eval.run_eval)
+eval/results/runs.jsonl
+eval/results/failures/

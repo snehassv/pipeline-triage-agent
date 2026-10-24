@@ -1,0 +1,4 @@
+Model,n,Avg tokens in / out,Avg cost,Total,Avg time
+claude-haiku-4-5,160,"4,829 / 378",$0.0134,$2.15,6.2s
+claude-opus-5,160,"6,552 / 1,341",$0.0663,$10.61,17.8s
+claude-sonnet-5,160,"6,552 / 1,048",$0.0236,$3.77,11.6s
