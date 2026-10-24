@@ -5,7 +5,8 @@
   "license": "mit-license",
   "creators": [
     {
-      "name": "Sriram, Sneha"
+      "name": "Sriram, Snehavarsha",
+      "orcid": "0009-0005-2281-4712"
     }
   ],
   "description": "<p>An LLM-assisted triage tool for Apache Airflow pipeline failures. It reads a failed task's logs, classifies the root cause, and may open a pull request with a suggested fix &mdash; but only when the root cause is one a repository change can actually address.</p><p>The archive includes a local Airflow harness that reproduces eight realistic pipeline failures with genuine tracebacks, and the complete data from a 480-diagnosis evaluation across three models: every diagnosis, every verified patch, and the captured failure evidence each diagnosis was shown.</p>",
