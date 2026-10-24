@@ -327,8 +327,10 @@ at the exact code and data a result came from.
 
 > Sriram, S. (2026). *Pipeline Triage Agent* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23621806
 
-`CITATION.cff` carries the same metadata, so GitHub's "Cite this repository"
-button and most reference managers can read it directly.
+Two files keep that metadata honest, and they have to agree with each other:
+`.zenodo.json` is what Zenodo reads when it archives a release (it replaces
+whatever Zenodo would otherwise scrape from GitHub), and `CITATION.cff` is what
+GitHub's "Cite this repository" button and most reference managers read.
 
 ### What the archive contains
 
