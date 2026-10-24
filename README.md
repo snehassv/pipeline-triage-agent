@@ -1,5 +1,7 @@
 # Pipeline Triage Agent
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23621806.svg)](https://doi.org/10.5281/zenodo.23621806)
+
 An LLM-assisted triage tool for Airflow pipeline failures. It reads a failed
 task's logs, diagnoses the root cause, explains it in two registers — one for
 engineers, one for analysts — and opens a pull request with a suggested fix.
@@ -310,6 +312,36 @@ same risk category. This is the second kind.
 - [ ] Persist diagnoses across restarts
 - [ ] Containerized deployment with a scoped service account
 - [ ] Additional failure categories
+
+---
+
+## Citing this work
+
+Each release is archived on Zenodo with the evaluation data it produced.
+
+- **Concept DOI** (always the newest release): [10.5281/zenodo.23621806](https://doi.org/10.5281/zenodo.23621806)
+- **First archived release** (v1.0.0, code only): [10.5281/zenodo.23621807](https://doi.org/10.5281/zenodo.23621807)
+
+Each release also gets its own version DOI; cite that one when you need to point
+at the exact code and data a result came from.
+
+> Sriram, S. (2026). *Pipeline Triage Agent* [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23621806
+
+Two files keep that metadata honest, and they have to agree with each other:
+`.zenodo.json` is what Zenodo reads when it archives a release (it replaces
+whatever Zenodo would otherwise scrape from GitHub), and `CITATION.cff` is what
+GitHub's "Cite this repository" button and most reference managers read.
+
+### What the archive contains
+
+Everything needed to check the numbers, not just the code:
+
+| Path | What it is |
+|---|---|
+| `eval/results/runs.jsonl` | All 480 diagnoses — prompt condition, model, label, confidence, patch, tokens, cost |
+| `eval/results/patch_checks.jsonl` | Every patch that was applied and re-run, and whether the task then passed |
+| `eval/results/failures/` | The captured evidence each diagnosis saw, so repeats measure the model and not the harness |
+| `eval/results/tables/` | The derived tables, regenerable with `python -m eval.analyze --csv eval/results/tables` |
 
 ---
 

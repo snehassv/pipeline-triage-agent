@@ -231,8 +231,9 @@ agent/usage.jsonl
 # macOS
 .DS_Store
 
-# Evaluation outputs (regenerate with python -m eval.run_eval)
-eval/results/runs.jsonl
-eval/results/failures/
-eval/results/patch_checks.jsonl
-eval/results/tables/
+# Evaluation outputs are committed on purpose: they are the evidence behind the
+# numbers in the README, and an archived release is worth little without them.
+# Regenerate with:
+#   python -m eval.run_eval capture && python -m eval.run_eval diagnose
+#   python -m eval.verify_patches
+#   python -m eval.analyze --csv eval/results/tables
