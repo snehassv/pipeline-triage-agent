@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software or its evaluation data, please cite it as below."
+title: "Pipeline Triage Agent"
+abstract: >-
+  An LLM-assisted triage tool for Apache Airflow pipeline failures. It reads a
+  failed task's logs, classifies the root cause, and may open a pull request
+  with a suggested fix — but only when the root cause is one a repository change
+  can actually address. Ships with a local harness that reproduces eight
+  realistic pipeline failures, and with the data from a 480-diagnosis evaluation
+  across three models.
+type: software
+authors:
+  - family-names: Sriram
+    given-names: Sneha
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+license: MIT
+repository-code: "https://github.com/snehassv/pipeline-triage-agent"
+doi: 10.5281/zenodo.23621806
+version: v1.0.1
+date-released: 2026-10-24
+keywords:
+  - apache-airflow
+  - data-engineering
+  - large-language-models
+  - incident-triage
+  - root-cause-analysis
+  - automated-program-repair
