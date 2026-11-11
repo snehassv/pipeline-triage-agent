@@ -138,19 +138,21 @@ def stability(rows: list) -> str:
 
 
 def calibration(rows: list) -> str:
+    """Per arm: pooling them would let each new arm silently move every figure."""
     body = []
-    for confidence in ("High", "Medium", "Low"):
-        group = [r for r in rows if r.get("confidence") == confidence]
-        if not group:
-            continue
-        patched = [r for r in group if r.get("patch")]
-        body.append([confidence, len(group),
-                     pct(sum(1 for r in group if r.get("root_cause") == r["truth_root_cause"]
-                             and r["condition"] == "gated"),
-                         sum(1 for r in group if r["condition"] == "gated")),
-                     pct(sum(1 for r in patched if r["truth_fix_in_repo"]), len(patched))])
+    for condition in CONDITIONS:
+        for confidence in ("High", "Medium", "Low"):
+            group = [r for r in rows
+                     if r["condition"] == condition and r.get("confidence") == confidence]
+            if not group:
+                continue
+            patched = [r for r in group if r.get("patch")]
+            body.append([condition, confidence, len(group),
+                         pct(sum(1 for r in group if r.get("root_cause") == r["truth_root_cause"]),
+                             len(group)) if condition == "gated" else "—",
+                         pct(sum(1 for r in patched if r["truth_fix_in_repo"]), len(patched))])
     return table("Does confidence predict correctness?",
-                 ["Confidence", "n", "Root cause correct (gated)",
+                 ["Condition", "Confidence", "n", "Root cause correct",
                   "Patches on failures a repo change can fix"], body)
 
 
