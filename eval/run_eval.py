@@ -23,13 +23,14 @@ from pathlib import Path
 
 from agent import diagnosis
 from agent.main import REPO_ROOT
-from eval import baseline, gates, harness
+from eval import baseline, gates, harness, prompt_only
 from eval.scenarios import SCENARIOS, BY_ID
 
 RUNS = harness.RESULTS / "runs.jsonl"
 MODELS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"]
 CONDITIONS = {
     "baseline": (baseline.SYSTEM, baseline.FIX_SCHEMA),
+    "prompt_only": (prompt_only.SYSTEM, prompt_only.FIX_SCHEMA),
     "gated": (diagnosis.SYSTEM, diagnosis.FIX_SCHEMA),
 }
 # Rough per-diagnosis cost before we have measurements for a model (USD).
@@ -77,7 +78,7 @@ def diagnose_one(scenario_id: str, model: str, condition: str, repeat: int) -> d
         "ok": True,
         "type": result.get("type"), "cat": result.get("cat"),
         "confidence": result.get("confidence"),
-        "root_cause": result.get("rootCause"),            # absent in the baseline arm
+        "root_cause": result.get("rootCause"),            # absent unless gated
         "fix_summary": result.get("fixSummary"),
         "patch": patch,
         "patch_files": result.get("fixFile"),
