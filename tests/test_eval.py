@@ -1,13 +1,16 @@
 """The evaluation's own logic: ground truth, the three arms' PR gates, and the statistics."""
 
+import hashlib
 import json
+import re
+from pathlib import Path
 
 import pytest
 
 from agent import main as agent_main
 from agent import diagnosis
 from eval import analyze, baseline, gates, prompt_only, run_eval
-from eval.scenarios import BY_ID, ROOT_CAUSES, SCENARIOS
+from eval.scenarios import BY_ID, ORIGINAL, ROOT_CAUSES, SCENARIOS
 
 
 def row(**kwargs):
@@ -26,6 +29,36 @@ def test_scenarios_are_well_formed():
         # Only a code or config problem can be fixed by changing this repository.
         assert s.fix_in_repo == (s.root_cause in ("code", "config")), s.id
         assert s.summary.endswith(".")
+
+
+# sha256 of the gated prompt and schema when the scenarios after the original eight were
+# written. Those scenarios are only "held out" while this holds: if the prompt is edited
+# after seeing how models do on them, they stop testing whether the guidance generalises.
+# Change it only for a new study, and say so in the paper.
+FROZEN_PROMPT = "f071ef0a0b1efa93d16f55b5383e30453fe6fa8d2f34b375b568458ab0269364"
+
+
+def test_the_prompt_is_frozen():
+    text = diagnosis.SYSTEM + json.dumps(diagnosis.FIX_SCHEMA, sort_keys=True)
+    assert hashlib.sha256(text.encode()).hexdigest() == FROZEN_PROMPT
+
+
+def test_held_out_scenarios_were_added_after_the_original_eight():
+    assert ORIGINAL <= set(BY_ID) and len(ORIGINAL) == 8
+    assert not any(BY_ID[s].held_out for s in ORIGINAL)
+    added = [s for s in SCENARIOS if s.id not in ORIGINAL]
+    assert len(added) == 7 and sum(s.held_out for s in added) == 6
+    # The new fixable cases fill the gaps: a code root cause, and look-alikes of old cases.
+    assert {s.root_cause for s in SCENARIOS if s.fix_in_repo} == {"code", "config"}
+
+
+def test_every_scenario_names_a_pipeline_and_a_setup_that_exist():
+    root = Path(__file__).resolve().parent.parent
+    config = (root / "dags/config/pipelines.yaml").read_text()
+    for s in SCENARIOS:
+        assert re.search(rf"dag_id:\s*{s.dag_id}\s*$", config, re.M), s.id
+        if s.setup:
+            assert (root / (s.setup.replace(".", "/") + ".py")).exists(), s.id
 
 
 def test_the_baseline_arm_is_the_version_that_predates_the_rule():
@@ -180,3 +213,14 @@ def test_ablation_scores_the_gated_runs_with_and_without_the_gate():
     assert "1/1" in by_change["+ root-cause guidance in the prompt"].split("|")[6]
     assert "1/1" in by_change["+ rootCause field, committed before the patch"].split("|")[6]
     assert "0/1" in by_change["+ server-side gate on rootCause"].split("|")[6]
+
+
+def test_generalisation_splits_original_control_and_held_out():
+    rows = [{**row(condition="baseline", root_cause=None, truth_fix_in_repo=False),
+             "model": "m", "scenario": sid}
+            for sid in ("duplicate_keys", "null_customer_ids", "orphan_store_keys")]
+    out = analyze.generalisation(rows)
+    for label in ("original (named in the prompt)", "added: control (named in the prompt)",
+                  "added: held out"):
+        line = next(l for l in out.splitlines() if l.startswith(f"| {label} | original prompt"))
+        assert "1/1" in line.split("|")[6]
