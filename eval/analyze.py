@@ -15,12 +15,14 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
+from eval import gates
 from eval.harness import RESULTS
 from eval.scenarios import SCENARIOS, BY_ID
 
 RUNS = RESULTS / "runs.jsonl"
 CHECKS = RESULTS / "patch_checks.jsonl"
 Z = 1.96
+CONDITIONS = ("baseline", "prompt_only", "gated")
 
 
 def wilson(successes: int, total: int) -> tuple:
@@ -98,7 +100,7 @@ def accuracy(rows: list) -> str:
 def per_scenario(rows: list) -> str:
     body = []
     for scenario in SCENARIOS:
-        for condition in ("baseline", "gated"):
+        for condition in CONDITIONS:
             group = [r for r in rows if r["scenario"] == scenario.id and r["condition"] == condition]
             if not group:
                 continue
@@ -136,19 +138,21 @@ def stability(rows: list) -> str:
 
 
 def calibration(rows: list) -> str:
+    """Per arm: pooling them would let each new arm silently move every figure."""
     body = []
-    for confidence in ("High", "Medium", "Low"):
-        group = [r for r in rows if r.get("confidence") == confidence]
-        if not group:
-            continue
-        patched = [r for r in group if r.get("patch")]
-        body.append([confidence, len(group),
-                     pct(sum(1 for r in group if r.get("root_cause") == r["truth_root_cause"]
-                             and r["condition"] == "gated"),
-                         sum(1 for r in group if r["condition"] == "gated")),
-                     pct(sum(1 for r in patched if r["truth_fix_in_repo"]), len(patched))])
+    for condition in CONDITIONS:
+        for confidence in ("High", "Medium", "Low"):
+            group = [r for r in rows
+                     if r["condition"] == condition and r.get("confidence") == confidence]
+            if not group:
+                continue
+            patched = [r for r in group if r.get("patch")]
+            body.append([condition, confidence, len(group),
+                         pct(sum(1 for r in group if r.get("root_cause") == r["truth_root_cause"]),
+                             len(group)) if condition == "gated" else "—",
+                         pct(sum(1 for r in patched if r["truth_fix_in_repo"]), len(patched))])
     return table("Does confidence predict correctness?",
-                 ["Confidence", "n", "Root cause correct (gated)",
+                 ["Condition", "Confidence", "n", "Root cause correct",
                   "Patches on failures a repo change can fix"], body)
 
 
@@ -164,6 +168,40 @@ def cost(rows: list) -> str:
                      f"${sum(costs):.2f}" if costs else "—", f"{seconds:.1f}s"])
     return table("Cost and latency per diagnosis",
                  ["Model", "n", "Avg tokens in / out", "Avg cost", "Total", "Avg time"], body)
+
+
+def ablation(rows: list) -> str:
+    """What each layer adds, one change at a time.
+
+    The gated runs appear twice: scored without the server-side gate, they show what the
+    rootCause field alone did to the model's output; scored with it, what the gate added.
+    The gate changes only which patches become PRs, never what the model writes, so the
+    two gated rows share their abstention and patch rates.
+    """
+    arms = [
+        ("baseline", "original prompt", gates.baseline_blocker),
+        ("prompt_only", "+ root-cause guidance in the prompt", gates.prompt_only_blocker),
+        ("gated", "+ rootCause field, committed before the patch", gates.prompt_only_blocker),
+        ("gated", "+ server-side gate on rootCause", gates.gated_blocker),
+    ]
+    body = []
+    for model in sorted({r["model"] for r in rows}) + [None]:
+        for condition, change, blocker in arms:
+            group = [r for r in rows if r["condition"] == condition
+                     and (model is None or r["model"] == model)]
+            if not group:
+                continue
+            unfixable = [r for r in group if not r["truth_fix_in_repo"]]
+            fixable = [r for r in group if r["truth_fix_in_repo"]]
+            body.append([
+                model or "all models", change, len(group),
+                pct(sum(1 for r in unfixable if not r.get("patch")), len(unfixable)),
+                pct(sum(1 for r in fixable if r.get("patch")), len(fixable)),
+                pct(sum(1 for r in unfixable if blocker(r) is None), len(group)),
+            ])
+    return table("Ablation: what the prompt, the field and the gate each add",
+                 ["Model", "Change", "n", "Abstained on unfixable", "Patched when fixable",
+                  "PR-eligible but unfixable"], body)
 
 
 def efficacy() -> str:
@@ -214,7 +252,8 @@ def main() -> int:
           f"{len({r['scenario'] for r in rows})} scenarios, "
           f"{len({r['model'] for r in rows})} models\n")
     sections = {
-        "headline": headline(rows), "accuracy": accuracy(rows), "per_scenario": per_scenario(rows),
+        "headline": headline(rows), "ablation": ablation(rows), "accuracy": accuracy(rows),
+        "per_scenario": per_scenario(rows),
         "stability": stability(rows), "calibration": calibration(rows),
         "efficacy": efficacy(), "cost": cost(rows),
     }
