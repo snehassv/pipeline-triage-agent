@@ -11,6 +11,7 @@ Usage:
 
 import csv
 import random
+import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -34,6 +35,7 @@ N_PRODUCTS = 1000
 N_STORES = 50
 N_CUSTOMERS = 2000
 N_ORDERS = 20000
+N_VENDOR_SKUS = 300
 
 CATEGORIES = ["Cereal", "Snacks", "Baking", "Frozen", "Beverages"]
 REGIONS = ["Northeast", "Southeast", "Midwest", "Southwest", "West"]
@@ -44,6 +46,7 @@ REGIONS = ["Northeast", "Southeast", "Midwest", "Southwest", "West"]
 # ---------------------------------------------------------------------------
 
 TABLES = [
+    "fct_order_lines", "stg_store_snapshots", "stg_vendor_prices",
     "fct_sales", "stg_orders", "stg_customers", "stg_products", "stg_stores",
     "dim_product", "dim_store", "dim_hierarchy_v1", "schema_migrations",
 ]
@@ -91,6 +94,26 @@ def seed_stores(cur):
     cur.executemany("INSERT INTO stg_stores VALUES (%s,%s,%s,%s)", rows)
     cur.executemany("INSERT INTO dim_store VALUES (%s,%s,%s,%s)", rows)
     print(f"  stg_stores / dim_store: {len(rows)} rows")
+    return rows
+
+
+def seed_store_snapshots(cur, stores):
+    """The last 7 daily snapshots of every store, as the store system exports them."""
+    rows = []
+    for store_id, name, region, updated_at in stores:
+        for days_ago in range(7):
+            rows.append((store_id, name, region, updated_at,
+                         (EXTRACT_DATE - timedelta(days=days_ago)).date()))
+    cur.executemany("INSERT INTO stg_store_snapshots VALUES (%s,%s,%s,%s,%s)", rows)
+    print(f"  stg_store_snapshots: {len(rows)} rows")
+
+
+def vendor_prices():
+    """The vendor's price list: one row per SKU, in dollars."""
+    rows = []
+    for i in range(1, N_VENDOR_SKUS + 1):
+        rows.append((f"VND-{i:05d}", f"{random.uniform(0.79, 89.99):.2f}", "USD",
+                     EXTRACT_DATE.date().isoformat()))
     return rows
 
 
@@ -185,7 +208,8 @@ def main():
         with conn.cursor() as cur:
             print("seeding...")
             seed_products(cur)
-            seed_stores(cur)
+            stores = seed_stores(cur)
+            seed_store_snapshots(cur, stores)
             customers = seed_customers(cur)
             orders = seed_orders(cur)
             seed_hierarchy(cur)
@@ -207,10 +231,24 @@ def main():
         customers,
     )
 
+    write_extract(
+        f"vendor_prices_{stamp}.csv",
+        ["sku", "unit_price", "currency", "price_date"],
+        vendor_prices(),
+    )
+
     # Landing directory for the sensor DAG. Deliberately left empty —
     # vendor_feed.csv never arrives, which is the point.
     (DATA_DIR / "landing").mkdir(parents=True, exist_ok=True)
     (DATA_DIR / "exports").mkdir(parents=True, exist_ok=True)
+    # daily_sales_export fails because this folder doesn't exist. A patch that creates it
+    # (verify_patches applies some that do) leaves it behind, and git can't revert it.
+    shutil.rmtree(DATA_DIR / "exports" / "missing_dir", ignore_errors=True)
+    # The store master export folder. A scenario makes its file unwritable; undo that.
+    store_master = DATA_DIR / "exports" / "store_master"
+    store_master.mkdir(parents=True, exist_ok=True)
+    for f in store_master.iterdir():
+        f.unlink()
 
     print("seed complete")
 

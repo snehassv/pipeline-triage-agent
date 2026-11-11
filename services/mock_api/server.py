@@ -15,13 +15,15 @@ Endpoints:
     POST /token              -> {"token": "..."}
     GET  /records/{id}       -> one record
     GET  /admin/mode         -> current mode
-    POST /admin/mode         -> {"mode": "normal|throttled|moved", "limit": 20}
+    POST /admin/mode         -> {"mode": "normal|throttled|moved|revoked", "limit": 20}
 
 Modes (set by the scenario scripts in scripts/scenarios/):
     normal     everything answers
     throttled  more than `limit` requests in 60s gets 429 + Retry-After, and every
                response slows down — the shape of a rate limit you don't control
     moved      the API now lives under /v2; old paths 404
+    revoked    the vendor disabled our API client: tokens are still issued, but every
+               record request is refused with 401 — an account problem on their side
 """
 
 import json
@@ -92,6 +94,13 @@ class Handler(BaseHTTPRequestHandler):
             if not path.startswith("/v2/"):
                 return self._send(404, {"detail": "endpoint moved; use /v2"})
             path = path[len("/v2"):]
+
+        if mode == "revoked" and RECORD_PATH.match(path):
+            return self._send(
+                401, {"error": "invalid_token",
+                      "detail": "the client this token was issued to has been disabled"},
+                {"WWW-Authenticate": 'Bearer error="invalid_token", '
+                                     'error_description="client disabled"'})
 
         if _over_limit():
             time.sleep(0.4)
