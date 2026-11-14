@@ -1,0 +1,13 @@
+Scenarios,Change,n,Abstained on unfixable,Patched when fixable,PR-eligible but unfixable
+original (named in the prompt),original prompt,240,"125/180 (69%, CI 62%–76%)","60/60 (100%, CI 94%–100%)","36/240 (15%, CI 11%–20%)"
+original (named in the prompt),+ root-cause guidance in the prompt,240,"159/180 (88%, CI 83%–92%)","55/60 (92%, CI 82%–96%)","6/240 (2%, CI 1%–5%)"
+original (named in the prompt),"+ rootCause field, committed before the patch",240,"163/180 (91%, CI 85%–94%)","54/60 (90%, CI 80%–95%)","4/240 (2%, CI 1%–4%)"
+original (named in the prompt),+ server-side gate on rootCause,240,"163/180 (91%, CI 85%–94%)","54/60 (90%, CI 80%–95%)","4/240 (2%, CI 1%–4%)"
+added: control (named in the prompt),original prompt,30,"30/30 (100%, CI 89%–100%)",—,"0/30 (0%, CI 0%–11%)"
+added: control (named in the prompt),+ root-cause guidance in the prompt,30,"30/30 (100%, CI 89%–100%)",—,"0/30 (0%, CI 0%–11%)"
+added: control (named in the prompt),"+ rootCause field, committed before the patch",30,"30/30 (100%, CI 89%–100%)",—,"0/30 (0%, CI 0%–11%)"
+added: control (named in the prompt),+ server-side gate on rootCause,30,"30/30 (100%, CI 89%–100%)",—,"0/30 (0%, CI 0%–11%)"
+added: held out,original prompt,180,"96/120 (80%, CI 72%–86%)","60/60 (100%, CI 94%–100%)","13/180 (7%, CI 4%–12%)"
+added: held out,+ root-cause guidance in the prompt,180,"110/120 (92%, CI 85%–95%)","59/60 (98%, CI 91%–100%)","4/180 (2%, CI 1%–6%)"
+added: held out,"+ rootCause field, committed before the patch",180,"116/120 (97%, CI 92%–99%)","52/60 (87%, CI 76%–93%)","4/180 (2%, CI 1%–6%)"
+added: held out,+ server-side gate on rootCause,180,"116/120 (97%, CI 92%–99%)","52/60 (87%, CI 76%–93%)","4/180 (2%, CI 1%–6%)"
