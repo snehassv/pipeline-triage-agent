@@ -72,6 +72,18 @@ def _task_merge(cfg):
     return run
 
 
+def _task_fact_load(cfg):
+    """Fact load: append staged rows to a fact table whose keys reference dimensions."""
+    def run(**_):
+        hook = PostgresHook(postgres_conn_id=cfg.get("conn_id", "warehouse"))
+        hook.run(f"""
+            INSERT INTO {cfg['target_table']} ({cfg['columns']})
+            SELECT {cfg['columns']} FROM {cfg['source_table']}
+            ON CONFLICT ({cfg['key']}) DO NOTHING;
+        """)
+    return run
+
+
 def _task_dq(cfg):
     """DQ threshold: count flagged rows, fail when the configured limit is crossed."""
     def run(**_):
@@ -137,6 +149,7 @@ def _task_api_extract(cfg):
 BUILDERS = {
     "schema": _task_schema,
     "merge": _task_merge,
+    "fact": _task_fact_load,
     "dq": _task_dq,
     "table": _task_missing_table,
     "gcs": _task_file_export,     # keeping your category name; it's local FS here

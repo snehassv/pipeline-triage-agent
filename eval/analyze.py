@@ -17,7 +17,7 @@ from pathlib import Path
 
 from eval import gates
 from eval.harness import RESULTS
-from eval.scenarios import SCENARIOS, BY_ID
+from eval.scenarios import BY_ID, ORIGINAL, SCENARIOS
 
 RUNS = RESULTS / "runs.jsonl"
 CHECKS = RESULTS / "patch_checks.jsonl"
@@ -170,6 +170,35 @@ def cost(rows: list) -> str:
                  ["Model", "n", "Avg tokens in / out", "Avg cost", "Total", "Avg time"], body)
 
 
+ARMS = [
+    ("baseline", "original prompt", gates.baseline_blocker),
+    ("prompt_only", "+ root-cause guidance in the prompt", gates.prompt_only_blocker),
+    ("gated", "+ rootCause field, committed before the patch", gates.prompt_only_blocker),
+    ("gated", "+ server-side gate on rootCause", gates.gated_blocker),
+]
+ABLATION_COLUMNS = ["Change", "n", "Abstained on unfixable", "Patched when fixable",
+                    "PR-eligible but unfixable"]
+
+
+def _arm_rows(rows: list, label: str) -> list:
+    """One table row per arm: how often it abstained, patched, and let an unfixable
+    failure through as a PR, over `rows`."""
+    body = []
+    for condition, change, blocker in ARMS:
+        group = [r for r in rows if r["condition"] == condition]
+        if not group:
+            continue
+        unfixable = [r for r in group if not r["truth_fix_in_repo"]]
+        fixable = [r for r in group if r["truth_fix_in_repo"]]
+        body.append([
+            label, change, len(group),
+            pct(sum(1 for r in unfixable if not r.get("patch")), len(unfixable)),
+            pct(sum(1 for r in fixable if r.get("patch")), len(fixable)),
+            pct(sum(1 for r in unfixable if blocker(r) is None), len(group)),
+        ])
+    return body
+
+
 def ablation(rows: list) -> str:
     """What each layer adds, one change at a time.
 
@@ -178,30 +207,34 @@ def ablation(rows: list) -> str:
     The gate changes only which patches become PRs, never what the model writes, so the
     two gated rows share their abstention and patch rates.
     """
-    arms = [
-        ("baseline", "original prompt", gates.baseline_blocker),
-        ("prompt_only", "+ root-cause guidance in the prompt", gates.prompt_only_blocker),
-        ("gated", "+ rootCause field, committed before the patch", gates.prompt_only_blocker),
-        ("gated", "+ server-side gate on rootCause", gates.gated_blocker),
-    ]
     body = []
     for model in sorted({r["model"] for r in rows}) + [None]:
-        for condition, change, blocker in arms:
-            group = [r for r in rows if r["condition"] == condition
-                     and (model is None or r["model"] == model)]
-            if not group:
-                continue
-            unfixable = [r for r in group if not r["truth_fix_in_repo"]]
-            fixable = [r for r in group if r["truth_fix_in_repo"]]
-            body.append([
-                model or "all models", change, len(group),
-                pct(sum(1 for r in unfixable if not r.get("patch")), len(unfixable)),
-                pct(sum(1 for r in fixable if r.get("patch")), len(fixable)),
-                pct(sum(1 for r in unfixable if blocker(r) is None), len(group)),
-            ])
+        group = [r for r in rows if model is None or r["model"] == model]
+        body += _arm_rows(group, model or "all models")
     return table("Ablation: what the prompt, the field and the gate each add",
-                 ["Model", "Change", "n", "Abstained on unfixable", "Patched when fixable",
-                  "PR-eligible but unfixable"], body)
+                 ["Model"] + ABLATION_COLUMNS, body)
+
+
+def generalisation(rows: list) -> str:
+    """The ablation again, split by when each scenario was written.
+
+    The gated prompt was written knowing the original scenarios, and its examples name
+    most of them. If the guidance works only there, it recites; if it also works on the
+    held-out scenarios, written after the prompt was frozen and about failures it doesn't
+    mention, it generalises.
+    """
+    groups = [
+        ("original (named in the prompt)", lambda s: s.id in ORIGINAL),
+        ("added: control (named in the prompt)",
+         lambda s: s.id not in ORIGINAL and not s.held_out),
+        ("added: held out", lambda s: s.held_out),
+    ]
+    body = []
+    for label, keep in groups:
+        group = [r for r in rows if r["scenario"] in BY_ID and keep(BY_ID[r["scenario"]])]
+        body += _arm_rows(group, label)
+    return table("Generalisation: scenarios the prompt was written with, and ones it wasn't",
+                 ["Scenarios"] + ABLATION_COLUMNS, body)
 
 
 def efficacy() -> str:
@@ -252,7 +285,8 @@ def main() -> int:
           f"{len({r['scenario'] for r in rows})} scenarios, "
           f"{len({r['model'] for r in rows})} models\n")
     sections = {
-        "headline": headline(rows), "ablation": ablation(rows), "accuracy": accuracy(rows),
+        "headline": headline(rows), "ablation": ablation(rows),
+        "generalisation": generalisation(rows), "accuracy": accuracy(rows),
         "per_scenario": per_scenario(rows),
         "stability": stability(rows), "calibration": calibration(rows),
         "efficacy": efficacy(), "cost": cost(rows),

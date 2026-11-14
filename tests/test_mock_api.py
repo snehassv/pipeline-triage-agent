@@ -62,6 +62,15 @@ def test_moved_mode_404s_old_paths_and_serves_v2(api):
     assert get(f"{api}/admin/mode")[1]["mode"] == "moved"
 
 
+def test_revoked_mode_issues_tokens_but_refuses_records(api):
+    get(f"{api}/admin/mode", "POST", {"mode": "revoked"})
+    assert get(f"{api}/records")[0] == 200
+    assert get(f"{api}/token", "POST")[0] == 200
+    status, body, headers = get(f"{api}/records/1")
+    assert status == 401 and "disabled" in body["detail"]
+    assert "invalid_token" in headers["WWW-Authenticate"]
+
+
 def test_unknown_paths_404(api):
     assert get(f"{api}/nope")[0] == 404
 

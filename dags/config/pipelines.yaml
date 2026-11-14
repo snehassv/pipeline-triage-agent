@@ -19,6 +19,14 @@ pipelines:
     source_file: extracts/customers_20260921.csv
     target_table: stg_customers
 
+  - dag_id: vendor_price_load
+    category: schema
+    domain: supply
+    description: Load the vendor's daily price list (unit prices in US dollars)
+    schedule: "40 2 * * *"
+    source_file: extracts/vendor_prices_20260921.csv
+    target_table: stg_vendor_prices
+
   # --- merge / duplicate key ---------------------------------------------
   - dag_id: product_dim_upsert
     category: merge
@@ -38,6 +46,27 @@ pipelines:
     columns: store_id, store_name, region, updated_at
     key: store_id
 
+  - dag_id: store_snapshot_upsert
+    category: merge
+    domain: masterdata
+    description: Refresh dim_store from the store system's daily snapshots
+    schedule: "30 3 * * *"
+    source_table: stg_store_snapshots
+    target_table: dim_store
+    columns: store_id, store_name, region, updated_at
+    key: store_id
+
+  # --- fact loads -----------------------------------------------------------
+  - dag_id: sales_fact_load
+    category: fact
+    domain: sales
+    description: Append staged orders to fct_order_lines
+    schedule: "45 3 * * *"
+    source_table: stg_orders
+    target_table: fct_order_lines
+    columns: order_id, store_id, product_id, qty, amount, order_date
+    key: order_id
+
   # --- data quality thresholds -------------------------------------------
   - dag_id: product_deactivation_check
     category: dq
@@ -53,6 +82,15 @@ pipelines:
     schedule: "10 4 * * *"
     target_table: stg_orders
     predicate: "customer_id IS NULL"
+    threshold: 0
+
+  - dag_id: store_region_null_check
+    category: dq
+    domain: masterdata
+    description: Fail if any store is missing a region
+    schedule: "20 4 * * *"
+    target_table: dim_store
+    predicate: "region IS NOT NULL"
     threshold: 0
 
   # --- sensor timeout -----------------------------------------------------
@@ -77,6 +115,15 @@ pipelines:
     schedule: "0 5 * * *"
     source_table: fct_sales
     export_path: exports/missing_dir/sales.csv   # parent dir doesn't exist
+
+  - dag_id: store_master_export
+    category: gcs
+    domain: masterdata
+    description: Publish the store master for the merchandising team's nightly sync
+    schedule: "15 5 * * *"
+    source_table: dim_store
+    # The merchandising sync reads from this folder; the path is agreed with that team.
+    export_path: exports/store_master/stores.csv
 
   # --- third-party API extracts -------------------------------------------
   # Every entry repeats api_base, the way real configs do. When the API moves,
