@@ -1,8 +1,8 @@
 Condition,Confidence,n,Root cause correct,Patches on failures a repo change can fix
-baseline,High,184,—,"60/102 (59%, CI 49%–68%)"
-baseline,Medium,55,—,"0/13 (0%, CI 0%–23%)"
-baseline,Low,1,—,—
-prompt_only,High,184,—,"51/58 (88%, CI 77%–94%)"
-prompt_only,Medium,56,—,"4/18 (22%, CI 9%–45%)"
-gated,High,187,"157/187 (84%, CI 78%–89%)","53/57 (93%, CI 83%–97%)"
-gated,Medium,53,"40/53 (75%, CI 62%–85%)","1/14 (7%, CI 1%–31%)"
+baseline,High,331,—,"120/179 (67%, CI 60%–74%)"
+baseline,Medium,113,—,"0/20 (0%, CI 0%–16%)"
+baseline,Low,6,—,—
+prompt_only,High,337,—,"110/127 (87%, CI 80%–91%)"
+prompt_only,Medium,113,—,"4/18 (22%, CI 9%–45%)"
+gated,High,344,"293/344 (85%, CI 81%–89%)","105/113 (93%, CI 87%–96%)"
+gated,Medium,106,"92/106 (87%, CI 79%–92%)","1/14 (7%, CI 1%–31%)"
