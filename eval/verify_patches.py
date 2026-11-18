@@ -8,8 +8,10 @@ record whether the task passed. Then revert, always.
     python -m eval.verify_patches --dry-run     # what would be verified
     python -m eval.verify_patches
 
-Identical patches are verified once and the verdict shared, keyed by a hash of the patch
-text. Results go to eval/results/patch_checks.jsonl. No API cost — this is all Airflow.
+Identical patches are verified once per scenario and the verdict shared, keyed by the
+scenario and a hash of the patch text. Not the patch alone: the same text can be a real fix
+in one scenario and do nothing in another (an mkdir is both, for export_path and
+export_readonly), and the outcome depends on how that scenario broke the pipeline. Results go to eval/results/patch_checks.jsonl. No API cost — this is all Airflow.
 
 The working tree must be clean: the patches are applied to the real files that Docker
 mounts, so anything uncommitted would be rolled back with them.
@@ -51,12 +53,17 @@ def load_rows(path) -> list:
     return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
 
 
+def check_key(row: dict) -> tuple:
+    """What a verdict is about: this patch, applied to this scenario's failure."""
+    return row["scenario"], row.get("patch_id") or patch_id(row["patch"])
+
+
 def candidates() -> dict:
-    """{patch_id: row} for every distinct patch that applies, newest wins."""
+    """{(scenario, patch_id): row} for every distinct patch that applies, per scenario."""
     out = {}
     for row in load_rows(RUNS):
         if row.get("ok") and row.get("patch") and not row.get("patch_error"):
-            out.setdefault(patch_id(row["patch"]), row)
+            out.setdefault(check_key(row), row)
     return out
 
 
@@ -143,22 +150,22 @@ def main() -> int:
     args = ap.parse_args()
 
     todo = candidates()
-    done = {r["patch_id"] for r in load_rows(CHECKS)}
-    todo = {pid: row for pid, row in todo.items() if pid not in done}
+    done = {check_key(r) for r in load_rows(CHECKS)}
+    todo = {key: row for key, row in todo.items() if key not in done}
     if args.per_group:
         kept, seen = {}, {}
-        for pid in sorted(todo):                      # deterministic sample
-            row = todo[pid]
-            key = (row["scenario"], row["condition"])
-            if seen.get(key, 0) < args.per_group:
-                seen[key] = seen.get(key, 0) + 1
-                kept[pid] = row
+        for key in sorted(todo):                      # deterministic sample
+            row = todo[key]
+            group = (row["scenario"], row["condition"])
+            if seen.get(group, 0) < args.per_group:
+                seen[group] = seen.get(group, 0) + 1
+                kept[key] = row
         todo = kept
     if args.limit:
         todo = dict(list(todo.items())[:args.limit])
 
     print(f"{len(todo)} distinct patches to verify ({len(done)} already done)")
-    for pid, row in todo.items():
+    for (_, pid), row in todo.items():
         print(f"  {pid}  {row['scenario']:<16} {row['model']:<18} {row['condition']}")
     if args.dry_run:
         return 0
@@ -168,7 +175,7 @@ def main() -> int:
         return 1
 
     with CHECKS.open("a") as fh:
-        for i, (pid, row) in enumerate(todo.items(), 1):
+        for i, ((_, pid), row) in enumerate(todo.items(), 1):
             result = verify(row)
             fh.write(json.dumps(result) + "\n")
             fh.flush()

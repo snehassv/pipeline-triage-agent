@@ -224,3 +224,20 @@ def test_generalisation_splits_original_control_and_held_out():
                   "added: held out"):
         line = next(l for l in out.splitlines() if l.startswith(f"| {label} | original prompt"))
         assert "1/1" in line.split("|")[6]
+
+
+def test_the_same_patch_is_verified_once_per_scenario(monkeypatch, tmp_path):
+    """An mkdir is a real fix for export_path and does nothing for export_readonly. A
+    verdict keyed by the patch alone gave one scenario's result to the other."""
+    from eval import verify_patches
+    mkdir = "diff --git a/dags/dag_factory.py b/dags/dag_factory.py\n+mkdir\n"
+    runs = tmp_path / "runs.jsonl"
+    runs.write_text("".join(json.dumps({"ok": True, "patch": mkdir, "patch_error": None,
+                                        "scenario": s}) + "\n"
+                            for s in ("export_path", "export_readonly", "export_readonly")))
+    monkeypatch.setattr(verify_patches, "RUNS", runs)
+    keys = set(verify_patches.candidates())
+    assert keys == {("export_path", verify_patches.patch_id(mkdir)),
+                    ("export_readonly", verify_patches.patch_id(mkdir))}
+    checked = {"scenario": "export_path", "patch_id": verify_patches.patch_id(mkdir)}
+    assert verify_patches.check_key(checked) in keys

@@ -2,7 +2,11 @@ Scenario,Root cause,Ground truth,Patches verified,DAG then passed,Meaning
 schema_drift,config,a repo change can fix it,20,"20/20 (100%, CI 84%–100%)",genuine fix
 export_path,config,a repo change can fix it,20,"20/20 (100%, CI 84%–100%)",genuine fix
 duplicate_keys,data,no repo change can fix it,7,"7/7 (100%, CI 65%–100%)",**masked the problem**
-dq_threshold,data,no repo change can fix it,2,"2/2 (100%, CI 34%–100%)",**masked the problem**
-dropped_table,environment,no repo change can fix it,6,"6/6 (100%, CI 61%–100%)",**masked the problem**
+dq_threshold,data,no repo change can fix it,3,"3/3 (100%, CI 44%–100%)",**masked the problem**
+dropped_table,environment,no repo change can fix it,13,"13/13 (100%, CI 77%–100%)",**masked the problem**
 file_never_lands,environment,no repo change can fix it,1,"0/1 (0%, CI 0%–79%)",no effect
-api_throttled,environment,no repo change can fix it,20,"0/20 (0%, CI 0%–16%)",no effect
+api_throttled,environment,no repo change can fix it,35,"0/35 (0%, CI 0%–10%)",no effect
+export_readonly,environment,no repo change can fix it,15,"0/15 (0%, CI 0%–20%)",no effect
+orphan_store_keys,data,no repo change can fix it,1,"0/1 (0%, CI 0%–79%)",no effect
+price_units_changed,data,no repo change can fix it,2,"0/2 (0%, CI 0%–66%)",no effect
+token_revoked,environment,no repo change can fix it,2,"0/2 (0%, CI 0%–66%)",no effect
