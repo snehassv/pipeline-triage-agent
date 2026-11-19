@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+<title id="t">Unsafe pull requests per prompt arm</title>
+<desc id="d">PRs offered for failures no code change can fix, out of 330 runs per arm: original prompt 49 (17 hid the problem), with root-cause guidance 10 (1), with the rootCause field 8 (2), with the server-side gate 8 (2).</desc>
+<rect width="760" height="300" rx="12" fill="#1a1a19"/>
+<text x="24" y="38" font-size="18" font-weight="600" fill="#f0efec">PRs offered for failures no code change can fix</text>
+<text x="24" y="62" font-size="13" fill="#c3c2b7">330 runs per arm · 11 unfixable scenarios · 3 Claude models · every PR applied and re-run</text>
+<rect x="24" y="76" width="12" height="12" rx="3" fill="#3987e5"/>
+<text x="42" y="86.5" font-size="13" fill="#f0efec">Made the run pass — hid the problem</text>
+<rect x="318.0" y="76" width="12" height="12" rx="3" fill="#d95926"/>
+<text x="336.0" y="86.5" font-size="13" fill="#f0efec">Still failed when re-run</text>
+<line x1="190.0" y1="98" x2="190.0" y2="264" stroke="#383835" stroke-width="1"/>
+<text x="190.0" y="282" font-size="12" text-anchor="middle" fill="#c3c2b7">0</text>
+<line x1="292.0" y1="98" x2="292.0" y2="264" stroke="#2c2c2a" stroke-width="1"/>
+<text x="292.0" y="282" font-size="12" text-anchor="middle" fill="#c3c2b7">10</text>
+<line x1="394.0" y1="98" x2="394.0" y2="264" stroke="#2c2c2a" stroke-width="1"/>
+<text x="394.0" y="282" font-size="12" text-anchor="middle" fill="#c3c2b7">20</text>
+<line x1="496.0" y1="98" x2="496.0" y2="264" stroke="#2c2c2a" stroke-width="1"/>
+<text x="496.0" y="282" font-size="12" text-anchor="middle" fill="#c3c2b7">30</text>
+<line x1="598.0" y1="98" x2="598.0" y2="264" stroke="#2c2c2a" stroke-width="1"/>
+<text x="598.0" y="282" font-size="12" text-anchor="middle" fill="#c3c2b7">40</text>
+<line x1="700.0" y1="98" x2="700.0" y2="264" stroke="#2c2c2a" stroke-width="1"/>
+<text x="700.0" y="282" font-size="12" text-anchor="middle" fill="#c3c2b7">50</text>
+<text x="178" y="128.5" font-size="13" text-anchor="end" fill="#f0efec" font-weight="600">Original prompt</text>
+<rect x="190.0" y="113.0" width="173.4" height="22" fill="#3987e5"/>
+<path d="M365.4,113.0 H685.8 Q689.8,113.0 689.8,117.0 V131.0 Q689.8,135.0 685.8,135.0 H365.4 Z" fill="#d95926"/>
+<text x="276.7" y="128.5" font-size="12" font-weight="600" text-anchor="middle" fill="#ffffff">17</text>
+<text x="697.8" y="128.5" font-size="13" font-weight="600" fill="#f0efec">49</text>
+<text x="178" y="168.5" font-size="13" text-anchor="end" fill="#f0efec">+ root-cause guidance</text>
+<rect x="190.0" y="153.0" width="10.2" height="22" fill="#3987e5"/>
+<path d="M202.2,153.0 H288.0 Q292.0,153.0 292.0,157.0 V171.0 Q292.0,175.0 288.0,175.0 H202.2 Z" fill="#d95926"/>
+<text x="300.0" y="168.5" font-size="13" font-weight="600" fill="#f0efec">10</text>
+<text x="178" y="208.5" font-size="13" text-anchor="end" fill="#f0efec">+ rootCause field</text>
+<rect x="190.0" y="193.0" width="20.4" height="22" fill="#3987e5"/>
+<path d="M212.4,193.0 H267.6 Q271.6,193.0 271.6,197.0 V211.0 Q271.6,215.0 267.6,215.0 H212.4 Z" fill="#d95926"/>
+<text x="279.6" y="208.5" font-size="13" font-weight="600" fill="#f0efec">8</text>
+<text x="178" y="248.5" font-size="13" text-anchor="end" fill="#f0efec">+ server-side gate</text>
+<rect x="190.0" y="233.0" width="20.4" height="22" fill="#3987e5"/>
+<path d="M212.4,233.0 H267.6 Q271.6,233.0 271.6,237.0 V251.0 Q271.6,255.0 267.6,255.0 H212.4 Z" fill="#d95926"/>
+<text x="279.6" y="248.5" font-size="13" font-weight="600" fill="#f0efec">8</text>
+</svg>

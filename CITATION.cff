@@ -5,9 +5,12 @@ abstract: >-
   An LLM-assisted triage tool for Apache Airflow pipeline failures. It reads a
   failed task's logs, classifies the root cause, and may open a pull request
   with a suggested fix — but only when the root cause is one a repository change
-  can actually address. Ships with a local harness that reproduces eight
-  realistic pipeline failures, and with the data from a 480-diagnosis evaluation
-  across three models.
+  can actually address. Ships with a local harness that reproduces fifteen
+  realistic pipeline failures, and with the data from a 1,350-diagnosis evaluation
+  across three models and three versions of the agent: the original prompt,
+  specific root-cause guidance in the prompt, and a structural root-cause field
+  with a server-side gate. Every pull request offered for a failure no code
+  change can fix was applied and its pipeline re-run.
 type: software
 authors:
   - family-names: Sriram
