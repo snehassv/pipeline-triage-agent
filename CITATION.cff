@@ -22,10 +22,16 @@ repository-code: "https://github.com/snehassv/pipeline-triage-agent"
 doi: 10.5281/zenodo.23621806
 identifiers:
   - type: doi
+    value: 10.5281/zenodo.24378414
+    description: >-
+      Version 1.1.0 — the full study: 15 scenarios, three arms, 1,350
+      diagnoses, every unsafe PR verified. The one to cite for the reported
+      results.
+  - type: doi
     value: 10.5281/zenodo.23623233
     description: >-
       Version 1.0.1 — the first release whose archive includes the evaluation
-      data, and the one to cite for the reported results.
+      data (480 diagnoses, 8 scenarios, two arms).
 version: v1.1.0
 date-released: 2026-11-19
 keywords:
